@@ -7,6 +7,33 @@ import { LEVELS } from '../src/levels';
 import type { InputState, Vec2 } from '../src/types';
 
 const FRAMES = 6;
+const BEAM = 2500;
+
+/** Keep a spatially diverse subset: round-robin over coarse cells so no region floods the beam. */
+function diverse(nodes: Node[], limit: number): Node[] {
+  const cells = new Map<string, Node[]>();
+  for (const n of nodes) {
+    const p = n.g.player;
+    const k = `${n.g.room.index},${Math.floor(p.x / 8)},${Math.floor(p.y / 8)},${p.dashes},${p.onGround}`;
+    let list = cells.get(k);
+    if (!list) cells.set(k, (list = []));
+    list.push(n);
+  }
+  const lists = [...cells.values()];
+  const out: Node[] = [];
+  for (let i = 0; out.length < limit; i++) {
+    let any = false;
+    for (const l of lists) {
+      if (i < l.length) {
+        out.push(l[i]);
+        any = true;
+        if (out.length >= limit) break;
+      }
+    }
+    if (!any) break;
+  }
+  return out;
+}
 const SHARED = new Set(['level', 'world', 'room']);
 
 function clone(g: Game): Game {
@@ -45,7 +72,7 @@ function key(n: Node) {
   ].join(',');
 }
 
-function solve(levelId: string, maxNodes = 3_000_000) {
+function solve(levelId: string, maxNodes = 8_000_000) {
   const level = LEVELS.find((l) => l.id === levelId)!;
   const root = new Game(level);
   root.step({ moveX: 0, jumpHeld: false, jumpPresses: 0, dashQueue: null });
@@ -102,6 +129,7 @@ function solve(levelId: string, maxNodes = 3_000_000) {
       frontier = next.filter((x) => milestone(x) === top);
       console.log(`  milestone ${top} at depth ${depth}: keeping ${frontier.length}/${next.length}`);
     } else frontier = next;
+    if (frontier.length > BEAM) frontier = diverse(frontier, BEAM);
     if (depth % 10 === 0) {
       const best = frontier.reduce((m, n) => Math.max(m, n.g.player.x), -1e9);
       console.log(`  depth ${depth} frontier ${frontier.length} seen ${seen.size} max x ${best.toFixed(0)}`);
