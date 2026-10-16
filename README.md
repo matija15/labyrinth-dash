@@ -33,6 +33,24 @@ You can also run it in a browser with `npx expo start --web`. Skia loads CanvasK
 
 ## Controls
 
+There are two control schemes. Toggle them with **CONTROLS** on the level select screen; the choice is saved.
+
+**Auto-run (default)**: the player runs by itself in the direction it faces. On (re)spawn it waits for your first tap and starts toward the more open side.
+
+| Action | Touch | Keyboard (web) |
+| --- | --- | --- |
+| Jump | Tap anywhere (hold for a higher jump) | Z / Space / C |
+| Dash (8-way) | Swipe in any direction | X / Shift + arrows |
+| Wall slide | Automatic: touching a wall in the air grabs it | — |
+| Wall jump | Tap jump while on a wall: launches up and away and flips your run direction | Z / Space / C |
+| Shaft climb | Keep tapping jump; you bounce between opposite walls | Z / Space / C |
+| Wall drop | Swipe straight down while on a wall: let go and fall straight down (no dash used); you turn away from the wall on landing | X / Shift + ↓ |
+| Pause | ❚❚ button | Esc / P |
+
+Running into a wall on the ground stops you against it. Jump to grab it, then wall-jump to turn around.
+
+**Run pads (classic)**
+
 | Action | Touch | Keyboard (web) |
 | --- | --- | --- |
 | Run left / right | Hold the bottom-left / bottom-right of the screen | ← → / A D |
@@ -41,8 +59,7 @@ You can also run it in a browser with `npx expo start --web`. Skia loads CanvasK
 | Wall slide / wall jump | Push into a wall while airborne, then jump | same |
 | Pause | ❚❚ button | Esc / P |
 
-You can run with one thumb and jump or dash with the other. A swipe that starts as a jump tap
-turns into a dash once it travels about 30 px within 260 ms.
+A swipe that starts as a jump tap turns into a dash once it travels about 30 px within 260 ms.
 
 ## Levels
 
@@ -119,5 +136,5 @@ saws: a polyline object is a path saw, and an `orbit` property makes an orbit sa
 npx tsc --noEmit                 # types
 npx expo lint                    # lint
 npx tsx --test tests/*.test.ts   # engine tests (jump/coyote/buffer/wall/dash/hazards/rooms/levels/TMX/save/input)
-npx tsx scripts/solve.ts         # prove each built-in level can be beaten
+npx tsx scripts/solve.ts         # prove each built-in level can be beaten (auto-run; add --manual for run pads)
 ```

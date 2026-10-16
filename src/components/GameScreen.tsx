@@ -30,7 +30,7 @@ const haptic = (e: GameEvent) => {
   else if (e.type === 'death') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
   else if (e.type === 'goal') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   else if (e.type === 'pad' || e.type === 'unlock') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  else if (e.type === 'key' || e.type === 'orb') Haptics.selectionAsync();
+  else if (e.type === 'key' || e.type === 'orb' || e.type === 'walldrop') Haptics.selectionAsync();
 };
 
 export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Props) {
@@ -38,9 +38,14 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 20);
   const smallFont = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 12);
-  const game = useMemo(() => new Game(level), [level]);
+  const autoRun = (save.controls ?? 'auto') === 'auto';
+  const game = useMemo(() => new Game(level, { autoRun }), [level, autoRun]);
   const staticPic = useMemo(() => buildStaticPicture(game), [game]);
-  const touch = useMemo(() => new TouchController(), []);
+  const touch = useMemo(() => {
+    const t = new TouchController();
+    t.autoRun = autoRun;
+    return t;
+  }, [autoRun]);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [picture, setPicture] = useState<SkPicture | null>(null);
   const [paused, setPaused] = useState(false);

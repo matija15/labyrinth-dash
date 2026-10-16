@@ -81,6 +81,7 @@ export interface InputState {
 export type GameEvent =
   | { type: 'jump' }
   | { type: 'walljump' }
+  | { type: 'walldrop' }
   | { type: 'dash' }
   | { type: 'land' }
   | { type: 'death' }
@@ -100,8 +101,12 @@ export interface LevelRecord {
   clears: number;
 }
 
+export type ControlScheme = 'auto' | 'manual';
+
 export interface SaveData {
   version: 1;
   totalDeaths: number;
   levels: Record<string, LevelRecord>;
+  /** Absent in older saves → auto-run. */
+  controls?: ControlScheme;
 }

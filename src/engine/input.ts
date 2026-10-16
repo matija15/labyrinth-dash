@@ -18,7 +18,8 @@ export interface SwipeMark { x0: number; y0: number; dir: Vec2; t: number }
 
 /**
  * Pure multi-touch classifier:
- *  - touches starting in the bottom band hold left/right (by screen half; sliding across switches),
+ *  - touches starting in the bottom band hold left/right (by screen half; sliding across switches)
+ *    unless `autoRun` is set, in which case the whole screen is the action area,
  *  - touches elsewhere press jump immediately (held = higher jump),
  *  - a fast swipe from any action touch queues an 8-way dash and releases the jump hold.
  */
@@ -30,6 +31,8 @@ export class TouchController {
   lastSwipe: SwipeMark | null = null;
   keyboardX = 0;
   keyboardJump = false;
+  /** Auto-run scheme: no move pads, every touch is a jump/swipe touch. */
+  autoRun = false;
 
   constructor(input: InputState = createInput()) {
     this.input = input;
@@ -41,7 +44,7 @@ export class TouchController {
   }
 
   down(id: number, x: number, y: number, t: number) {
-    if (y > this.height * (1 - MOVE_ZONE)) {
+    if (!this.autoRun && y > this.height * (1 - MOVE_ZONE)) {
       this.pointers.set(id, { kind: 'move', x, y });
     } else {
       this.pointers.set(id, { kind: 'action', sx: x, sy: y, x, y, t0: t, swiped: false });

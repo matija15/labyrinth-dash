@@ -335,9 +335,8 @@ function text(c: SkCanvas, s: string, x: number, y: number, font: SkFont, P: SkP
   c.drawText(s, x, y, P, font);
 }
 
-function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
-  const { game, width, height, font, smallFont, touch } = f;
-  // Move pads
+function drawPads(c: SkCanvas, f: FrameContext, P: Paints) {
+  const { width, height, touch } = f;
   const padH = height * MOVE_ZONE;
   const pads = touch.padState();
   const padW = Math.min(width * 0.22, 180);
@@ -354,6 +353,11 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   };
   chevron(left.rect.x + padW / 2, left.rect.y + left.rect.height / 2, 1);
   chevron(right.rect.x + padW / 2, right.rect.y + right.rect.height / 2, -1);
+}
+
+function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
+  const { game, width, height, font, smallFont, touch } = f;
+  if (!touch.autoRun) drawPads(c, f, P);
 
   // Swipe indicator
   const sw = touch.lastSwipe;

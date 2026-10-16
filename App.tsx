@@ -47,6 +47,7 @@ export default function App() {
               levels={LEVELS}
               save={save}
               onPlay={setLevelId}
+              onControls={(controls) => onSave({ ...save, controls })}
               onReset={() => {
                 resetSave();
                 setSave(emptySave());
