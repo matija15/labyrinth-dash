@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SaveData } from '../types';
+import type { LevelDef, SaveData } from '../types';
 import { emptySave } from './save';
 
 const KEY = '@labyrinth-dash/save/v1';
@@ -27,3 +27,18 @@ export async function resetSave() {
   await AsyncStorage.removeItem(KEY);
 }
 
+
+const EDITOR_KEY = '@labyrinth-dash/editor/v1';
+
+export async function loadEditorDraft(): Promise<LevelDef | null> {
+  try {
+    const raw = await AsyncStorage.getItem(EDITOR_KEY);
+    return raw ? (JSON.parse(raw) as LevelDef) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeEditorDraft(level: LevelDef) {
+  return AsyncStorage.setItem(EDITOR_KEY, JSON.stringify(level)).catch(() => undefined);
+}

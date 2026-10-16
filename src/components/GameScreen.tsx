@@ -20,6 +20,8 @@ interface Props {
   onSave: (save: SaveData) => void;
   onExit: () => void;
   onNext: () => void;
+  /** Editor playtest: nothing is saved, pause / death return to the editor. */
+  playtest?: boolean;
 }
 
 interface Result { ms: number; deaths: number; best: number; newBest: boolean }
@@ -33,7 +35,7 @@ const haptic = (e: GameEvent) => {
   else if (e.type === 'key' || e.type === 'orb' || e.type === 'walldrop') Haptics.selectionAsync();
 };
 
-export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Props) {
+export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playtest = false }: Props) {
   useKeepAwake();
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 20);
@@ -52,27 +54,37 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
   const [result, setResult] = useState<Result | null>(null);
 
   const saveRef = useRef(save);
-  const live = useRef({ size, font, smallFont, insets, onSave });
+  const live = useRef({ size, font, smallFont, insets, onSave, onExit });
   const pausedRef = useRef(false);
   useLayoutEffect(() => {
     saveRef.current = save;
-    live.current = { size, font, smallFont, insets, onSave };
+    live.current = { size, font, smallFont, insets, onSave, onExit };
   });
 
-  const togglePause = useCallback(() => setPaused((p) => !p), []);
+  const togglePause = useCallback(() => {
+    if (playtest) live.current.onExit();
+    else setPaused((p) => !p);
+  }, [playtest]);
   useKeyboardControls(touch, togglePause);
 
   useEffect(() => {
     let scale = 1;
     let lastW = 0;
     let lastH = 0;
+    let exitTimer: ReturnType<typeof setTimeout> | null = null;
     const loop = new GameLoop(
       () => {
         if (pausedRef.current) return;
         game.step(touch.input);
         for (const e of game.drainEvents()) {
           haptic(e);
-          if (e.type === 'death') {
+          if (playtest && e.type === 'death') {
+            exitTimer ??= setTimeout(() => live.current.onExit(), 450);
+          } else if (playtest && e.type === 'goal') {
+            const ms = Math.round(game.time * 1000);
+            pausedRef.current = true;
+            setResult({ ms, deaths: game.deaths, best: ms, newBest: false });
+          } else if (e.type === 'death') {
             const next = recordDeaths(saveRef.current, level.id, 1);
             saveRef.current = next;
             live.current.onSave(next);
@@ -104,8 +116,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
       },
     );
     loop.start();
-    return () => loop.stop();
-  }, [game, level.id, staticPic, touch]);
+    return () => {
+      loop.stop();
+      if (exitTimer) clearTimeout(exitTimer);
+    };
+  }, [game, level.id, playtest, staticPic, touch]);
 
   useEffect(() => {
     pausedRef.current = paused || result !== null;
@@ -135,8 +150,8 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
       </GestureDetector>
 
       <Pressable
-        accessibilityLabel="Pause"
-        onPress={() => setPaused(true)}
+        accessibilityLabel={playtest ? 'Back to editor' : 'Pause'}
+        onPress={playtest ? onExit : () => setPaused(true)}
         style={[styles.pauseBtn, { top: insets.top + 10, right: insets.right + 14 }]}
         hitSlop={10}
       >
@@ -156,11 +171,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
         <Overlay title="CLEAR!">
           <Text style={styles.big}>{formatTime(result.ms)}</Text>
           <Text style={styles.sub}>
-            {result.newBest ? 'NEW BEST!' : `Best ${formatTime(result.best)}`} · {result.deaths} deaths
+            {playtest ? 'Playtest' : result.newBest ? 'NEW BEST!' : `Best ${formatTime(result.best)}`} · {result.deaths} deaths
           </Text>
           {hasNext && <Button label="Next level" onPress={onNext} primary />}
           <Button label="Retry" onPress={restart} primary={!hasNext} />
-          <Button label="Level select" onPress={onExit} />
+          <Button label={playtest ? 'Back to editor' : 'Level select'} onPress={onExit} />
         </Overlay>
       )}
     </View>
