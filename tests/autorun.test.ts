@@ -121,16 +121,6 @@ test('manual scheme still needs a held direction to cling', () => {
   assert.ok(g.player.vy > C.WALL_SLIDE_MAX, `free fall once released (vy=${g.player.vy})`);
 });
 
-test('auto-run touch layout: bottom-of-screen touches jump instead of steering', () => {
-  const t = new TouchController();
-  t.autoRun = true;
-  t.resize(800, 400);
-  t.down(1, 50, 380, 0);
-  assert.equal(t.input.moveX, 0);
-  assert.equal(t.input.jumpPresses, 1);
-  assert.equal(t.input.jumpHeld, true);
-});
-
 test('static spawn: auto-run stays idle in the ready phase until a direction tap', () => {
   const g = new Game(room(flat()), { autoRun: true });
   const x0 = g.player.x;
@@ -170,35 +160,127 @@ test('opposite-side tap on the ground flips the run instantly, without a jump', 
   assert.equal(g.player.vy, 0);
 });
 
-test('touch: half-screen taps set direction, corner buttons and second fingers jump', () => {
+const tapSide = (side: number) => (input: { tapQueue: number }) => (input.tapQueue = side);
+
+test('touch (auto-run): every tap is a half-screen tap, never a jump press; swipes still dash', () => {
   const t = new TouchController();
   t.autoRun = true;
   t.resize(800, 400);
-  t.down(1, 200, 150, 0);
-  assert.equal(t.input.faceQueue, -1);
+  t.down(1, 100, 380, 0);
+  assert.equal(t.input.tapQueue, -1);
   assert.equal(t.input.jumpPresses, 0);
-  assert.equal(t.input.jumpHeld, false);
+  assert.equal(t.input.jumpHeld, true, 'held finger extends a jump');
   t.up(1);
-  t.input.faceQueue = 0;
-  t.down(2, 600, 150, 10);
-  assert.equal(t.input.faceQueue, 1);
-  assert.equal(t.input.jumpPresses, 0);
-  // second finger while the first is still down → jump, direction untouched
-  t.input.faceQueue = 0;
-  t.down(3, 200, 150, 20);
-  assert.equal(t.input.jumpPresses, 1);
-  assert.equal(t.input.faceQueue, 0);
-  assert.equal(t.input.jumpHeld, true);
-  t.clear();
-  // right corner jump button
-  t.down(4, 740, 340, 30);
-  assert.equal(t.input.jumpPresses, 2);
-  assert.equal(t.input.faceQueue, 0);
-  assert.deepEqual(t.jumpButtonState(), [false, true]);
-  t.clear();
-  // swiping from a direction tap still dashes
-  t.down(5, 300, 150, 40);
-  t.move(5, 300, 200, 60);
+  assert.equal(t.input.jumpHeld, false);
+  t.down(2, 700, 20, 10);
+  assert.equal(t.input.tapQueue, 1);
+  t.input.tapQueue = 0;
+  t.move(2, 700, 80, 30);
   assert.deepEqual(t.input.dashQueue, { x: 0, y: 1 });
-  assert.equal(t.input.jumpPresses, 2);
+  assert.equal(t.input.jumpHeld, false, 'swipe releases the jump hold');
+});
+
+test('tap while standing still starts running that way without jumping', () => {
+  for (const side of [-1, 1]) {
+    const g = new Game(room(flat(40, 16, 20)), { autoRun: true });
+    const { x: x0, y: y0 } = g.player;
+    sim(g, 1, () => {});
+    assert.equal(g.phase, 'ready');
+    sim(g, 60, (f, i) => {
+      if (f === 0) tapSide(side)(i);
+      i.jumpHeld = f < 30;
+    });
+    assert.equal(g.player.facing, side);
+    assert.ok(g.player.onGround);
+    assert.equal(g.player.y, y0, 'no jump');
+    assert.ok((g.player.x - x0) * side > 40);
+  }
+});
+
+test('running: tap toward the run direction jumps, tap on the other side flips without a jump', () => {
+  const g = new Game(room(flat(40, 16, 20)), { autoRun: true });
+  const input = sim(g, 30, (f, i) => {
+    if (f === 0) tapSide(1)(i);
+  });
+  const y0 = g.player.y;
+  sim(g, 1, (_, i) => tapSide(1)(i), input);
+  assert.ok(g.player.vy < 0, 'same-side tap jumped');
+  assert.equal(g.player.facing, 1);
+  sim(g, 120, () => {}, input);
+  assert.ok(g.player.onGround);
+  sim(g, 1, (_, i) => tapSide(-1)(i), input);
+  assert.equal(g.player.facing, -1);
+  assert.ok(g.player.vx < 0, 'flipped on the next step');
+  sim(g, 20, () => {}, input);
+  assert.equal(g.player.y, y0, 'flip never jumps');
+  assert.ok(g.player.onGround);
+});
+
+test('holding a turn-around tap does not float the player like a held jump', () => {
+  const fall = (hold: boolean) => {
+    const g = new Game(room(flat(40, 30, 20)), { autoRun: true });
+    const input = sim(g, 20, (f, i) => {
+      if (f === 0) tapSide(1)(i);
+    });
+    g.player.y -= 60;
+    g.player.vy = 0;
+    sim(g, 1, (_, i) => {
+      tapSide(-1)(i);
+      i.jumpHeld = hold;
+    }, input);
+    sim(g, 20, (_, i) => (i.jumpHeld = hold), input);
+    return g.player.y;
+  };
+  assert.equal(fall(true), fall(false));
+});
+
+test('held tap gives a higher jump than a quick tap', () => {
+  const peak = (hold: number) => {
+    const g = new Game(room(flat(60, 30, 2)), { autoRun: true });
+    const input = sim(g, 10, (f, i) => {
+      if (f === 0) tapSide(1)(i);
+    });
+    const y0 = g.player.y;
+    let top = y0;
+    sim(g, 90, (f, i) => {
+      if (f === 0) tapSide(1)(i);
+      i.jumpHeld = f < hold;
+      top = Math.min(top, g.player.y);
+    }, input);
+    return y0 - top;
+  };
+  assert.ok(peak(40) > peak(1) + 4, `held ${peak(40)} vs tap ${peak(1)}`);
+});
+
+test('on a wall, a tap on either side wall-jumps away and flips direction', () => {
+  for (const side of [1, -1]) {
+    const g = new Game(room(flat(20, 30, 15)), { autoRun: true });
+    const input = sim(g, 60, (f, i) => {
+      if (f === 0) tapSide(1)(i);
+      if (f === 5) tapSide(1)(i);
+      i.jumpHeld = f > 4 && f < 25;
+    });
+    assert.equal(g.player.wallDir, 1, 'sliding on the right wall');
+    sim(g, 1, (_, i) => tapSide(side)(i), input);
+    assert.ok(g.player.vx < 0 && g.player.vy < 0, `tap ${side}: launched up and away`);
+    assert.equal(g.player.facing, -1);
+  }
+});
+
+test('shaft climbing with repeated taps on the same screen side', () => {
+  for (const side of [1, -1]) {
+    const g = new Game(shaft(), { autoRun: true });
+    const y0 = g.player.y;
+    let last = -100;
+    sim(g, 1200, (f, i) => {
+      const p = g.player;
+      if (f === 0 || ((p.onGround || p.wallDir !== 0) && f - last > 12)) {
+        tapSide(side)(i);
+        last = f;
+      }
+      i.jumpHeld = f - last < 18;
+    });
+    assert.ok(y0 - g.player.y > 25 * C.TILE, `side ${side}: climbed ${((y0 - g.player.y) / C.TILE).toFixed(1)} tiles`);
+    assert.equal(g.deaths, 0);
+  }
 });

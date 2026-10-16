@@ -35,20 +35,20 @@ You can also run it in a browser with `npx expo start --web`. Skia loads CanvasK
 
 There are two control schemes. Toggle them with **CONTROLS** on the level select screen; the choice is saved.
 
-**Auto-run (default)**: the player runs by itself in the direction it faces. After spawning or respawning it stands still until your first input. A direction tap starts it running that way; a jump or dash starts it toward the more open side.
+**Auto-run (default)**: the player runs by itself in the direction it faces. There are no on-screen controls: the screen is split invisibly into a left and a right half, and what a tap does depends on what the player is doing. After spawning or respawning it stands still until your first input.
 
-| Action | Touch | Keyboard (web) |
+| Situation | Touch | Keyboard (web) |
 | --- | --- | --- |
-| Start / run direction | Tap the left or right half of the screen (never jumps; on the ground it flips you instantly) | ← / → |
-| Jump | Tap a JUMP button in either bottom corner, or tap a second finger while one is down (hold for a higher jump) | Z / Space / C |
-| Dash (8-way) | Swipe in any direction | X / Shift + arrows |
-| Wall slide | Automatic: touching a wall in the air grabs it | — |
-| Wall jump | Tap jump while on a wall: launches up and away and flips your run direction | Z / Space / C |
-| Shaft climb | Keep tapping jump; you bounce between opposite walls | Z / Space / C |
-| Wall drop | Swipe straight down while on a wall: let go and fall straight down (no dash used); you turn away from the wall on landing | X / Shift + ↓ |
+| Standing still | Tap the left / right half: start running that way (never jumps) | ← / → |
+| Running on the ground | Tap the half you're running toward: jump (hold for a higher jump) | Z / Space / C |
+| Running on the ground | Tap the other half: turn around instantly (never jumps) | ← / → |
+| In the air | Tap the half you're moving toward: buffered jump (coyote time / landing); the other half turns you around | Z / Space / C |
+| On a wall | Tap anywhere, even the same half again and again: wall-jump up and away, flipping your run direction (shaft climbing) | Z / Space / C |
+| Anywhere | Swipe: 8-way dash in the swipe direction | X / Shift + arrows |
+| On a wall | Swipe straight down: let go and fall straight down (no dash used); you turn away from the wall on landing | X / Shift + ↓ |
 | Pause | ❚❚ button | Esc / P |
 
-Running into a wall on the ground stops you against it. Tap the other half to turn around, or jump to grab the wall and wall-jump off it.
+Touching a wall in the air grabs it automatically (slow slide). Running into a wall on the ground stops you against it: tap the other half to turn around, or jump to grab the wall and wall-jump off it. A hold only extends a tap that became a jump; holding a start / turn-around tap does nothing.
 
 **Run pads (classic)**
 

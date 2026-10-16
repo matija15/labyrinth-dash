@@ -72,9 +72,9 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls }: Props
       </View>
       <Text style={styles.help}>
         {controls === 'auto'
-          ? 'You run automatically · Tap the left / right half to run that way · JUMP buttons in the bottom corners ' +
-            '(or a second finger) jump, hold = higher · Swipe to dash in 8 directions · ' +
-            'Walls grab you automatically; jump to leap off and turn around · Swipe down on a wall to drop'
+          ? 'Tap the left / right half to start running that way · Then tap the side you run toward to jump ' +
+            '(hold = higher), the other side to turn around · On a wall any tap wall-jumps · ' +
+            'Swipe to dash in 8 directions · Swipe down on a wall to drop'
           : 'Hold bottom-left / bottom-right to run · Tap above to jump (hold = higher) · Swipe to dash in 8 directions · ' +
             'Push into walls to slide, jump off them to wall-jump'}
       </Text>

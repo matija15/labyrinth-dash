@@ -93,6 +93,8 @@ export class Game {
   private freeze = 0;
   private ghostTimer = 0;
   private lastJumpPresses = 0;
+  /** Whether the finger / key currently held belongs to a jump (auto-run start / turn taps don't extend jumps). */
+  private holdIsJump = false;
   private transition = { from: { x: 0, y: 0 }, to: { x: 0, y: 0 }, t: 0 };
   private rng = makeRng(1337);
 
@@ -145,12 +147,13 @@ export class Game {
       this.time += dt;
       this.lastJumpPresses = input.jumpPresses;
       input.faceQueue = 0;
+      input.tapQueue = 0;
       return;
     }
 
     if (this.phase === 'ready') {
       const idle = (this.autoRun || input.moveX === 0) && input.jumpPresses === this.lastJumpPresses && !input.dashQueue;
-      if (idle && !input.faceQueue) return;
+      if (idle && !input.faceQueue && !input.tapQueue) return;
       this.phase = 'playing';
     }
 
@@ -161,6 +164,7 @@ export class Game {
       this.lastJumpPresses = input.jumpPresses;
       input.dashQueue = null;
       input.faceQueue = 0;
+      input.tapQueue = 0;
       if (this.phase === 'dead' && this.phaseTimer <= 0) this.respawn();
       else if (this.phase === 'respawning' && this.phaseTimer <= 0) this.phase = 'playing';
       this.updateWorldObjects(dt);
@@ -185,14 +189,20 @@ export class Game {
 
   private readInput(input: InputState) {
     const p = this.player;
+    if (!input.jumpHeld) this.holdIsJump = false;
     if (input.jumpPresses !== this.lastJumpPresses) {
       this.lastJumpPresses = input.jumpPresses;
       p.jumpBuffer = C.JUMP_BUFFER_TIME;
       p.running = true;
+      this.holdIsJump = true;
     }
     if (input.faceQueue) {
       if (this.autoRun) this.face(input.faceQueue);
       input.faceQueue = 0;
+    }
+    if (input.tapQueue) {
+      if (this.autoRun) this.tap(input.tapQueue);
+      input.tapQueue = 0;
     }
     if (input.dashQueue) {
       p.running = true;
@@ -200,6 +210,22 @@ export class Game {
       p.dashBuffer = C.DASH_BUFFER_TIME;
       input.dashQueue = null;
     }
+  }
+
+  /**
+   * Auto-run touch tap on a screen half: standing still → start that way; on a wall → wall-jump
+   * (either side); otherwise the side you're heading → jump, the other side → flip.
+   */
+  private tap(side: number) {
+    const p = this.player;
+    const onWall = !p.onGround && this.wallDirAt(C.WALL_JUMP_CHECK) !== 0;
+    if (!p.running || (!onWall && side !== p.facing)) {
+      this.face(side);
+      this.holdIsJump = false;
+      return;
+    }
+    p.jumpBuffer = C.JUMP_BUFFER_TIME;
+    this.holdIsJump = true;
   }
 
   /** Auto-run direction tap: start/keep running that way, never jumps. */
@@ -242,6 +268,7 @@ export class Game {
 
   private updatePlayer(input: InputState, dt: number) {
     const p = this.player;
+    const held = input.jumpHeld && this.holdIsJump;
     const wasGround = p.onGround;
     p.onGround = p.vy >= 0 && this.solidRect(p.x, p.y + 1, C.PLAYER_W, C.PLAYER_H);
     p.wallDir = p.onGround ? 0 : this.wallDirAt(1);
@@ -313,13 +340,13 @@ export class Game {
       let maxFall = C.MAX_FALL;
       const clinging = p.wallDir !== 0 && p.vy >= 0 && (this.autoRun ? !p.wallDrop : moveX === p.wallDir);
       if (clinging) maxFall = C.WALL_SLIDE_MAX;
-      const g = input.jumpHeld && Math.abs(p.vy) < C.HALF_GRAV_THRESHOLD ? C.GRAVITY * 0.5 : C.GRAVITY;
+      const g = held && Math.abs(p.vy) < C.HALF_GRAV_THRESHOLD ? C.GRAVITY * 0.5 : C.GRAVITY;
       p.vy = p.vy > maxFall ? approach(p.vy, maxFall, C.GRAVITY * 2 * dt) : approach(p.vy, maxFall, g * dt);
       if (clinging && this.rng() < 0.25)
         this.burst(p.x + (p.wallDir > 0 ? C.PLAYER_W : 0), p.y + C.PLAYER_H, 1, DUST_COLOR, 12, -Math.PI / 2, 1);
 
       if (p.varJumpTimer > 0) {
-        if (input.jumpHeld) p.vy = Math.min(p.vy, p.varJumpSpeed);
+        if (held) p.vy = Math.min(p.vy, p.varJumpSpeed);
         else p.varJumpTimer = 0;
         p.varJumpTimer -= dt;
       }
