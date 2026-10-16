@@ -377,19 +377,25 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
     text(c, `KEY x${game.heldKeys}`, x0 + 110, y0 + 20, smallFont, P.key, P.hudShadow);
   }
   const roomLabel = `${game.level.name.toUpperCase()}  ${game.world.rooms.indexOf(game.room) + 1}/${game.world.rooms.length}`;
-  const lw = smallFont.measureText(roomLabel).width;
+  const lw = textWidth(smallFont, roomLabel);
   text(c, roomLabel, width / 2 - lw / 2, f.insets.top + 22, smallFont, P.hudDim, P.hudShadow);
 
   const hint = game.level.rooms[game.room.index]?.hint;
   if (hint && game.phase !== 'complete') {
-    const hw = smallFont.measureText(hint).width;
+    const hw = textWidth(smallFont, hint);
     text(c, hint, width / 2 - hw / 2, height * 0.3, smallFont, P.hudText, P.hudShadow);
   }
   if (game.phase === 'ready') {
     const msg = 'TOUCH TO START';
-    const mw = font.measureText(msg).width;
+    const mw = textWidth(font, msg);
     text(c, msg, width / 2 - mw / 2, height * 0.42, font, P.hudText, P.hudShadow);
   }
+}
+
+function textWidth(font: SkFont, s: string) {
+  let w = 0;
+  for (const g of font.getGlyphWidths(font.getGlyphIDs(s))) w += g;
+  return w;
 }
 
 /** Draw one full frame (world + effects + HUD) into a picture. */
