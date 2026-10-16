@@ -130,3 +130,75 @@ test('auto-run touch layout: bottom-of-screen touches jump instead of steering',
   assert.equal(t.input.jumpPresses, 1);
   assert.equal(t.input.jumpHeld, true);
 });
+
+test('static spawn: auto-run stays idle in the ready phase until a direction tap', () => {
+  const g = new Game(room(flat()), { autoRun: true });
+  const x0 = g.player.x;
+  sim(g, 60, () => {});
+  assert.equal(g.phase, 'ready');
+  assert.equal(g.player.x, x0);
+});
+
+test('direction tap starts running that way without jumping', () => {
+  for (const dir of [-1, 1]) {
+    const g = new Game(room(flat(40, 16, 20)), { autoRun: true });
+    const { x: x0, y: y0 } = g.player;
+    sim(g, 60, (f, i) => {
+      if (f === 0) i.faceQueue = dir;
+    });
+    assert.equal(g.phase, 'playing');
+    assert.equal(g.player.facing, dir);
+    assert.ok(g.player.onGround, 'still grounded');
+    assert.equal(g.player.y, y0, 'no jump');
+    assert.ok((g.player.x - x0) * dir > 40, `ran ${dir < 0 ? 'left' : 'right'}`);
+  }
+});
+
+test('opposite-side tap on the ground flips the run instantly, without a jump', () => {
+  const g = new Game(room(flat(40, 16, 20)), { autoRun: true });
+  const input = sim(g, 40, (f, i) => {
+    if (f === 0) i.faceQueue = 1;
+  });
+  const y0 = g.player.y;
+  input.faceQueue = -1;
+  sim(g, 1, () => {}, input);
+  assert.equal(g.player.facing, -1);
+  assert.ok(g.player.vx < 0, 'moving left on the very next step');
+  sim(g, 30, () => {}, input);
+  assert.ok(g.player.onGround);
+  assert.equal(g.player.y, y0);
+  assert.equal(g.player.vy, 0);
+});
+
+test('touch: half-screen taps set direction, corner buttons and second fingers jump', () => {
+  const t = new TouchController();
+  t.autoRun = true;
+  t.resize(800, 400);
+  t.down(1, 200, 150, 0);
+  assert.equal(t.input.faceQueue, -1);
+  assert.equal(t.input.jumpPresses, 0);
+  assert.equal(t.input.jumpHeld, false);
+  t.up(1);
+  t.input.faceQueue = 0;
+  t.down(2, 600, 150, 10);
+  assert.equal(t.input.faceQueue, 1);
+  assert.equal(t.input.jumpPresses, 0);
+  // second finger while the first is still down → jump, direction untouched
+  t.input.faceQueue = 0;
+  t.down(3, 200, 150, 20);
+  assert.equal(t.input.jumpPresses, 1);
+  assert.equal(t.input.faceQueue, 0);
+  assert.equal(t.input.jumpHeld, true);
+  t.clear();
+  // right corner jump button
+  t.down(4, 740, 340, 30);
+  assert.equal(t.input.jumpPresses, 2);
+  assert.equal(t.input.faceQueue, 0);
+  assert.deepEqual(t.jumpButtonState(), [false, true]);
+  t.clear();
+  // swiping from a direction tap still dashes
+  t.down(5, 300, 150, 40);
+  t.move(5, 300, 200, 60);
+  assert.deepEqual(t.input.dashQueue, { x: 0, y: 1 });
+  assert.equal(t.input.jumpPresses, 2);
+});

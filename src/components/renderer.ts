@@ -6,7 +6,7 @@ import { PARTICLE_COLORS, type Game } from '../engine/game';
 import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
 import { T } from '../engine/world';
 import { formatTime } from '../engine/save';
-import { MOVE_ZONE, type TouchController } from '../engine/input';
+import { MOVE_ZONE, jumpButtons, type TouchController } from '../engine/input';
 
 export const COLORS = {
   bg: '#06070d',
@@ -335,6 +335,18 @@ function text(c: SkCanvas, s: string, x: number, y: number, font: SkFont, P: SkP
   c.drawText(s, x, y, P, font);
 }
 
+function drawJumpButtons(c: SkCanvas, f: FrameContext, P: Paints) {
+  const { width, height, touch } = f;
+  const held = touch.jumpButtonState();
+  jumpButtons(width, height, f.insets.left, f.insets.right).forEach((b, i) => {
+    c.drawCircle(b.x, b.y, b.r, held[i] ? P.pad1On : P.pad1);
+    c.drawCircle(b.x, b.y, b.r, P.padStroke);
+    const s = b.r * 0.32;
+    c.drawLine(b.x - s, b.y + s * 0.5, b.x, b.y - s * 0.5, P.padStroke);
+    c.drawLine(b.x, b.y - s * 0.5, b.x + s, b.y + s * 0.5, P.padStroke);
+  });
+}
+
 function drawPads(c: SkCanvas, f: FrameContext, P: Paints) {
   const { width, height, touch } = f;
   const padH = height * MOVE_ZONE;
@@ -357,7 +369,8 @@ function drawPads(c: SkCanvas, f: FrameContext, P: Paints) {
 
 function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   const { game, width, height, font, smallFont, touch } = f;
-  if (!touch.autoRun) drawPads(c, f, P);
+  if (touch.autoRun) drawJumpButtons(c, f, P);
+  else drawPads(c, f, P);
 
   // Swipe indicator
   const sw = touch.lastSwipe;
@@ -390,7 +403,7 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
     text(c, hint, width / 2 - hw / 2, height * 0.3, smallFont, P.hudText, P.hudShadow);
   }
   if (game.phase === 'ready') {
-    const msg = 'TOUCH TO START';
+    const msg = f.touch.autoRun ? 'TAP LEFT OR RIGHT TO START' : 'TOUCH TO START';
     const mw = textWidth(font, msg);
     text(c, msg, width / 2 - mw / 2, height * 0.42, font, P.hudText, P.hudShadow);
   }

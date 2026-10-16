@@ -144,11 +144,13 @@ export class Game {
       if (this.transition.t >= 1) this.phase = 'playing';
       this.time += dt;
       this.lastJumpPresses = input.jumpPresses;
+      input.faceQueue = 0;
       return;
     }
 
     if (this.phase === 'ready') {
-      if (input.moveX === 0 && input.jumpPresses === this.lastJumpPresses && !input.dashQueue) return;
+      const idle = (this.autoRun || input.moveX === 0) && input.jumpPresses === this.lastJumpPresses && !input.dashQueue;
+      if (idle && !input.faceQueue) return;
       this.phase = 'playing';
     }
 
@@ -158,6 +160,7 @@ export class Game {
       this.phaseTimer -= dt;
       this.lastJumpPresses = input.jumpPresses;
       input.dashQueue = null;
+      input.faceQueue = 0;
       if (this.phase === 'dead' && this.phaseTimer <= 0) this.respawn();
       else if (this.phase === 'respawning' && this.phaseTimer <= 0) this.phase = 'playing';
       this.updateWorldObjects(dt);
@@ -187,11 +190,30 @@ export class Game {
       p.jumpBuffer = C.JUMP_BUFFER_TIME;
       p.running = true;
     }
+    if (input.faceQueue) {
+      if (this.autoRun) this.face(input.faceQueue);
+      input.faceQueue = 0;
+    }
     if (input.dashQueue) {
       p.running = true;
       p.bufferedDash = input.dashQueue;
       p.dashBuffer = C.DASH_BUFFER_TIME;
       input.dashQueue = null;
+    }
+  }
+
+  /** Auto-run direction tap: start/keep running that way, never jumps. */
+  private face(dir: number) {
+    const p = this.player;
+    const flip = p.running && p.facing !== dir;
+    p.facing = dir;
+    p.running = true;
+    p.wallDrop = false;
+    p.forceMoveTimer = 0;
+    if (flip && p.onGround) {
+      p.vx = dir * C.RUN_SPEED;
+      p.scaleX = 0.8;
+      p.scaleY = 1.15;
     }
   }
 

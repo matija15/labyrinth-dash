@@ -35,11 +35,12 @@ You can also run it in a browser with `npx expo start --web`. Skia loads CanvasK
 
 There are two control schemes. Toggle them with **CONTROLS** on the level select screen; the choice is saved.
 
-**Auto-run (default)**: the player runs by itself in the direction it faces. On (re)spawn it waits for your first tap and starts toward the more open side.
+**Auto-run (default)**: the player runs by itself in the direction it faces. After spawning or respawning it stands still until your first input. A direction tap starts it running that way; a jump or dash starts it toward the more open side.
 
 | Action | Touch | Keyboard (web) |
 | --- | --- | --- |
-| Jump | Tap anywhere (hold for a higher jump) | Z / Space / C |
+| Start / run direction | Tap the left or right half of the screen (never jumps; on the ground it flips you instantly) | ← / → |
+| Jump | Tap a JUMP button in either bottom corner, or tap a second finger while one is down (hold for a higher jump) | Z / Space / C |
 | Dash (8-way) | Swipe in any direction | X / Shift + arrows |
 | Wall slide | Automatic: touching a wall in the air grabs it | — |
 | Wall jump | Tap jump while on a wall: launches up and away and flips your run direction | Z / Space / C |
@@ -47,7 +48,7 @@ There are two control schemes. Toggle them with **CONTROLS** on the level select
 | Wall drop | Swipe straight down while on a wall: let go and fall straight down (no dash used); you turn away from the wall on landing | X / Shift + ↓ |
 | Pause | ❚❚ button | Esc / P |
 
-Running into a wall on the ground stops you against it. Jump to grab it, then wall-jump to turn around.
+Running into a wall on the ground stops you against it. Tap the other half to turn around, or jump to grab the wall and wall-jump off it.
 
 **Run pads (classic)**
 
