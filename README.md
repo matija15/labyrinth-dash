@@ -64,6 +64,20 @@ A swipe that starts as a jump tap turns into a dash once it travels about 30 px 
 
 ## Levels
 
+Levels come in two packs:
+
+- **Release pack** (`src/levels/release/`): the only levels players ever see. One `<id>.json` per level, and
+  `order.json` lists them in play/unlock order. You write these with the editor's **Save** (see below).
+- **Demo pack** (`src/levels/dev/`): the six levels below. The tests and the solver use them, and dev builds can
+  switch to them with **PACK · DEMO** on the level select screen. They're never shown in a release build.
+
+**Dev builds vs release builds.** In Expo Go / `npx expo start` (`__DEV__`), the level select screen shows the
+**LEVEL EDITOR** and **PACK** buttons, and every level is unlocked. A release build (EAS / `expo export`) shows
+only the release pack with normal unlocking and no editor. To get the dev tools in a release-mode build (for
+example a TestFlight build for your own testing), build it with `EXPO_PUBLIC_DEV_TOOLS=1`.
+
+Demo levels:
+
 1. **First Light**: running, variable jumps, spikes, a crumbling bridge, a wall-jump shaft.
 2. **Dash Lab**: dashing gaps, refill-orb chains, a jump pad, key → door, portals.
 3. **The Labyrinth**: six interconnected rooms with a sawblade gauntlet (moving and orbiting saws), a key room,
@@ -75,7 +89,7 @@ A swipe that starts as a jump tap turns into a dash once it travels about 30 px 
 6. **Undercroft**: a locked gate with the key in the cellar below, a crumbling bridge, a shaft climb to a portal
    back up to the gate, then crumbling pillars under a sweeping saw.
 
-Each level unlocks after you clear the previous one. Long-press "hold to reset save" on the level select screen to wipe your progress.
+In a release build each level unlocks after you clear the previous one. Long-press "hold to reset save" on the level select screen to wipe your progress.
 
 ## Project structure
 
@@ -99,10 +113,12 @@ src/engine/
   editor.ts                pure editor ops: paint, rooms, saws, level code export / import
   tmx.ts                   Tiled .tmx (CSV layer + saw objects) → RoomDef
   save.ts / storage.ts     pure save reducers + AsyncStorage I/O
-src/levels/                built-in levels (2D tile-string arrays)
+src/levels/release/        release pack: <id>.json per level + order.json (+ generated index.ts)
+src/levels/dev/            demo / test levels (2D tile-string arrays), dev builds only
 src/types/                 shared types
 tests/                     engine tests (node:test)
 scripts/solve.ts           brute-force solver that proves each built-in level can be completed
+scripts/level-server.ts    dev-only server behind the editor's Save / Levels (npm run levels)
 ```
 
 ### Physics model
@@ -137,10 +153,27 @@ saws: [
 
 ### In-game level editor
 
-Tap **LEVEL EDITOR** on the level select screen.
+Tap **LEVEL EDITOR** on the level select screen (dev builds only).
+
+**Workflow for release levels:**
+
+1. In one terminal run `npm run levels`. This is a small local server on port 8790 that writes level files into
+   `src/levels/release/`. In another terminal run `npx expo start` (press `w` for the browser editor, or scan the
+   QR code with Expo Go; the phone has to be on the same Wi-Fi).
+2. Build the level, then press **Save**. Set the name and subtitle there. The file name comes from the name.
+   A new level is added as the last level. Saving a level you opened from **Levels** overwrites it, and if
+   you renamed it, it renames the file and keeps its place in the order.
+3. **Levels** lists the release pack in order. You can open, move ↑ / ↓ (that changes the unlock order) or delete
+   levels, start a new level, open a demo level, or paste level code.
+4. Commit `src/levels/release/` to ship the levels. Don't edit `index.ts` there, because it's generated.
 
 - **Palette (left):** Wall, Spikes (they point away from the wall they touch), Saw, Dash Orb, Key, Door,
-  Spawn, Exit Flag, Crumble, Jump Pad, Eraser, + Room, − Room and Pan. Tap or drag on the grid to paint.
+  Spawn, Exit Flag, Crumble, Jump Pad, Eraser, Select, Paste, + Room, − Room and Pan. Tap or drag on the grid
+  to paint.
+- **Select / copy / paste:** with **Select**, drag a box, then **Copy**, **Cut**, **Fill** (paints the last
+  tile tool you picked over the whole box), **Clear** or **✕**. Then pick **Paste** and tap or drag to place
+  the block by its top-left corner. Saws inside the box are copied too, and pasting outside every room adds rooms.
+  On web you can also use Ctrl+C / Ctrl+X / Ctrl+V, Delete and Esc.
 - **Saws:** drag to make a saw that moves back and forth along that line. Tap to make a saw that circles
   the tile. The eraser removes a saw when you erase its start, end or center tile.
 - **Rooms:** the grid uses the game's 8 px tiles, and zoom 1× shows 16 tiles of height, the same as in
@@ -149,13 +182,12 @@ Tap **LEVEL EDITOR** on the level select screen.
 - **Camera:** scroll with two fingers or the Pan tool, and zoom with − / +. On web, the arrow keys and the
   mouse wheel scroll too.
 - **Undo:** reverts the last stroke (Ctrl+Z on web). Your work is saved automatically as a draft.
-- **▶ Playtest:** plays the level from the first room's spawn. Pause (or Esc) and dying both return you
-  to the editor. Playtests don't touch your save data.
-- **Export:** shows the level as a complete `src/levels/*.ts` file, in the same format as the built-in levels.
-  *Copy to Clipboard* copies the file and *Copy as JSON* copies plain JSON. Save it as a new file in
-  `src/levels/` and add it to `LEVELS` in `src/levels/index.ts`.
-- **Load:** opens a new blank level or any built-in level, or loads pasted code (the JSON, or a whole
-  level `.ts` file).
+- **▶ Start / ▶ Here:** ▶ Start plays the level from the first room's spawn. ▶ Here starts in the room in
+  the middle of the screen, so you can practise the last screen of a long level without replaying the rest.
+  Pause (or Esc) and dying both return you to the editor. Playtests don't touch your save data.
+- **Export:** shows the level as a complete `.ts` level file (the demo-level format). *Copy as JSON* copies
+  plain JSON, the same format as the release `.json` files. Use this to move a level by hand when the level
+  server isn't running.
 
 ### Tiled (.tmx)
 
@@ -169,5 +201,5 @@ saws: a polyline object is a path saw, and an `orbit` property makes an orbit sa
 npx tsc --noEmit                 # types
 npx expo lint                    # lint
 npx tsx --test tests/*.test.ts   # engine tests (jump/coyote/buffer/wall/dash/hazards/rooms/levels/TMX/save/input)
-npx tsx scripts/solve.ts         # prove each built-in level can be beaten (auto-run; add --manual for run pads)
+npx tsx scripts/solve.ts         # try to beat every demo + release level (auto-run; add --manual for run pads)
 ```

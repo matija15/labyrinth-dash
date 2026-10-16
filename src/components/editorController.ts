@@ -1,6 +1,7 @@
 import { TILE } from '../engine/constants';
 import {
-  ROOM_H, ROOM_W, addSaw, blankLevel, deleteRoomAt, levelBounds, lineTiles, paintTile, slugify, type EditorTool,
+  ROOM_H, ROOM_W, addSaw, blankLevel, clearRect, copyRect, deleteRoomAt, fillRect, levelBounds, lineTiles, nearestRoom,
+  normRect, paintTile, pasteClip, slugify, type Clip, type EditorTool, type TileRect,
 } from '../engine/editor';
 import type { LevelDef } from '../types';
 
@@ -14,12 +15,18 @@ export interface EditorSnapshot {
   sawDrag: [number, number, number, number] | null;
   undoCount: number;
   message: string | null;
+  selection: TileRect | null;
+  /** Where a paste would land (tile rect), while dragging with the Paste tool. */
+  pastePreview: TileRect | null;
+  hasClip: boolean;
 }
 
 type Stroke =
   | { kind: 'paint'; before: string; changed: boolean; last: [number, number] }
   | { kind: 'saw'; before: string; start: [number, number]; end: [number, number] }
   | { kind: 'room'; before: string; start: [number, number] }
+  | { kind: 'select'; start: [number, number] }
+  | { kind: 'paste'; before: string; at: [number, number] }
   | { kind: 'pan' };
 
 const UNDO_LIMIT = 60;
@@ -39,6 +46,9 @@ export class EditorController {
   private pointers = new Map<number, { x: number; y: number }>();
   private stroke: Stroke | null = null;
   private tool: EditorTool = '#';
+  private selection: TileRect | null = null;
+  private clip: Clip | null = null;
+  private pasteAt: [number, number] | null = null;
   private width = 0;
   private height = 0;
   private scale = 1;
@@ -54,7 +64,9 @@ export class EditorController {
   snapshot(): EditorSnapshot {
     return {
       level: this.level, version: this.version, camX: this.cam.x, camY: this.cam.y, cursor: this.cursor,
-      sawDrag: this.sawDrag, undoCount: this.undoStack.length, message: this.message,
+      sawDrag: this.sawDrag, undoCount: this.undoStack.length, message: this.message, selection: this.selection,
+      pastePreview: this.clip && this.pasteAt ? { x: this.pasteAt[0], y: this.pasteAt[1], w: this.clip.w, h: this.clip.h } : null,
+      hasClip: !!this.clip,
     };
   }
 
@@ -99,6 +111,37 @@ export class EditorController {
     if (undoable) this.pushUndo(JSON.stringify(this.level));
     this.level = level;
     this.message = null;
+    this.selection = null;
+    this.emit(true);
+  }
+
+  /** Copy / cut / clear / fill the current selection (fill paints `fillTool` on every tile). */
+  selectionOp(op: 'copy' | 'cut' | 'clear' | 'fill' | 'deselect', fillTool: EditorTool = '#') {
+    const sel = this.selection;
+    if (!sel) return;
+    if (op === 'deselect') {
+      this.selection = null;
+      return this.emit();
+    }
+    if (op === 'copy' || op === 'cut') {
+      this.clip = copyRect(this.level, sel);
+      this.message = `${op === 'cut' ? 'Cut' : 'Copied'} ${sel.w}×${sel.h}. Pick Paste and tap where its top-left corner goes`;
+    }
+    if (op === 'copy') return this.emit();
+    const before = JSON.stringify(this.level);
+    const edited = op === 'fill' ? fillRect(this.level, fillTool, sel) : clearRect(this.level, sel);
+    if (edited) this.pushUndo(before);
+    this.emit(edited);
+  }
+
+  /** Room under the middle of the canvas (or the closest one): where "playtest here" starts. */
+  centerRoomIndex(leftInset = 0) {
+    const [tx, ty] = this.tileAt(leftInset + (this.width - leftInset) / 2, this.height / 2);
+    return nearestRoom(this.level, tx, ty);
+  }
+
+  setSubtitle(subtitle: string) {
+    this.level.subtitle = subtitle;
     this.emit(true);
   }
 
@@ -140,11 +183,12 @@ export class EditorController {
     if (this.pointers.size >= 2) {
       // A second finger turns any stroke into a two-finger pan and cancels its edits.
       const s = this.stroke;
-      const revert = s && s.kind !== 'pan' ? s.before : null;
+      const revert = s && 'before' in s ? s.before : null;
       if (revert) this.level = JSON.parse(revert);
       this.stroke = { kind: 'pan' };
       this.cursor = null;
       this.sawDrag = null;
+      this.pasteAt = null;
       this.emit(!!revert);
       return;
     }
@@ -154,7 +198,18 @@ export class EditorController {
     const tool = this.tool;
     let edited = false;
     if (tool === 'pan') this.stroke = { kind: 'pan' };
-    else if (tool === 'saw') {
+    else if (tool === 'select') {
+      this.stroke = { kind: 'select', start: t };
+      this.selection = normRect(t[0], t[1], t[0], t[1]);
+    } else if (tool === 'paste') {
+      if (!this.clip) {
+        this.message = 'Nothing copied yet: use Select, then Copy';
+        this.stroke = { kind: 'pan' };
+      } else {
+        this.stroke = { kind: 'paste', before, at: t };
+        this.pasteAt = t;
+      }
+    } else if (tool === 'saw') {
       this.stroke = { kind: 'saw', before, start: t, end: t };
       this.sawDrag = [t[0], t[1], t[0], t[1]];
     } else if (tool === 'room-' || tool === 'room+') {
@@ -188,6 +243,11 @@ export class EditorController {
       s.last = t;
       s.changed ||= edited;
       this.cursor = t;
+    } else if (s.kind === 'select') {
+      this.selection = normRect(s.start[0], s.start[1], t[0], t[1]);
+    } else if (s.kind === 'paste') {
+      s.at = t;
+      this.pasteAt = t;
     } else if (s.kind === 'saw') {
       s.end = t;
       this.sawDrag = [s.start[0], s.start[1], t[0], t[1]];
@@ -205,8 +265,10 @@ export class EditorController {
     this.stroke = null;
     this.cursor = null;
     this.sawDrag = null;
+    this.pasteAt = null;
     let edited = false;
     if (s.kind === 'paint' && s.changed) this.pushUndo(s.before);
+    else if (s.kind === 'paste' && this.clip) edited = pasteClip(this.level, this.clip, s.at[0], s.at[1]);
     else if (s.kind === 'saw') {
       edited = addSaw(this.level, s.start[0], s.start[1], s.end[0], s.end[1]);
       if (!edited) this.message = 'No room fits there for a saw';
@@ -220,7 +282,7 @@ export class EditorController {
           ? this.level.rooms.length <= 1 ? 'Can’t delete the last room' : 'Tap inside a room to delete it'
           : 'No free 32×16 space there (tap outside the existing rooms)';
     }
-    if (edited && s.kind !== 'pan') this.pushUndo(s.before);
+    if (edited && 'before' in s) this.pushUndo(s.before);
     this.emit(edited);
   }
 }

@@ -1,7 +1,8 @@
 /// <reference types="node" />
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS } from '../src/levels';
+import { DEV_LEVELS as LEVELS } from '../src/levels/dev';
+import { RELEASE_LEVELS } from '../src/levels/release';
 import { buildWorld, roomAt, validateLevel } from '../src/engine/world';
 import { Game } from '../src/engine/game';
 import { parseTmxRoom } from '../src/engine/tmx';
@@ -9,7 +10,7 @@ import { emptySave, recordClear, recordDeaths, formatTime } from '../src/engine/
 import { quantizeDir8 } from '../src/engine/math';
 import { TouchController } from '../src/engine/input';
 
-for (const level of LEVELS) {
+for (const level of [...LEVELS, ...RELEASE_LEVELS]) {
   test(`level ${level.id} is valid and builds`, () => {
     assert.deepEqual(validateLevel(level), []);
     const world = buildWorld(level);

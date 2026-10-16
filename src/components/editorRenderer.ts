@@ -1,6 +1,6 @@
 import { BlurStyle, PaintStyle, Skia, type SkCanvas, type SkFont, type SkPaint, type SkPicture } from '@shopify/react-native-skia';
 import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
-import { levelBounds, roomRect } from '../engine/editor';
+import { levelBounds, roomRect, type TileRect } from '../engine/editor';
 import type { LevelDef, SawDef } from '../types';
 import { COLORS } from './renderer';
 
@@ -45,6 +45,10 @@ const makePaints = () => ({
   sawPath: mk(COLORS.saw, { stroke: 0.6, alpha: 0.7 }),
   grid: mk('#2a3566', { stroke: 0.3, alpha: 0.55 }),
   cursor: mk('#ffffff', { stroke: 0.7, alpha: 0.8 }),
+  selFill: mk(COLORS.player, { alpha: 0.12 }),
+  sel: mk(COLORS.player, { stroke: 0.8 }),
+  paste: mk(COLORS.goal, { stroke: 0.8 }),
+  pasteFill: mk(COLORS.goal, { alpha: 0.12 }),
   text: mk(COLORS.dim),
 });
 const getPaints = () => (cache ??= makePaints());
@@ -176,6 +180,8 @@ export interface EditorFrame {
   font: SkFont | null;
   cursor: [number, number] | null;
   sawDrag: [number, number, number, number] | null;
+  selection?: TileRect | null;
+  pastePreview?: TileRect | null;
 }
 
 export function renderEditorFrame(f: EditorFrame): SkPicture {
@@ -202,6 +208,15 @@ export function renderEditorFrame(f: EditorFrame): SkPicture {
     else c.drawCircle(p(ax), p(ay), 2 * TILE, P.sawPath);
     drawSaw(c, p(ax), p(ay), 0.8 * TILE, P.saw);
     drawSaw(c, p(bx), p(by), 0.8 * TILE, P.sawGhost);
+  }
+  const rect = (r: TileRect) => Skia.XYWHRect(r.x * TILE, r.y * TILE, r.w * TILE, r.h * TILE);
+  if (f.selection) {
+    c.drawRect(rect(f.selection), P.selFill);
+    c.drawRect(rect(f.selection), P.sel);
+  }
+  if (f.pastePreview) {
+    c.drawRect(rect(f.pastePreview), P.pasteFill);
+    c.drawRect(rect(f.pastePreview), P.paste);
   }
   if (f.cursor) c.drawRect(Skia.XYWHRect(f.cursor[0] * TILE, f.cursor[1] * TILE, TILE, TILE), P.cursor);
   c.restore();

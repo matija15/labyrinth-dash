@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import { Canvas, Picture, useFont } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -6,10 +6,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { TILE, VIEW_TILES_H } from '../engine/constants';
 import {
-  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, type EditorTool,
+  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, startingFrom, type EditorTool,
 } from '../engine/editor';
+import { deletePackLevel, fetchPack, reorderPack, savePackLevel } from '../engine/levelServer';
 import { loadEditorDraft, writeEditorDraft } from '../engine/storage';
-import { LEVELS } from '../levels';
+import { DEV_LEVELS, RELEASE_LEVELS } from '../levels';
 import type { LevelDef } from '../types';
 import { EditorController, type EditorSnapshot } from './editorController';
 import { buildEditorPicture, renderEditorFrame } from './editorRenderer';
@@ -34,6 +35,8 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: '=', label: 'Crumble', color: COLORS.crumble },
   { tool: 'J', label: 'Jump Pad', color: COLORS.pad },
   { tool: 'erase', label: 'Eraser', color: COLORS.dim },
+  { tool: 'select', label: 'Select', color: COLORS.player },
+  { tool: 'paste', label: 'Paste', color: COLORS.goal },
   { tool: 'room+', label: '+ Room', color: '#3a4a86' },
   { tool: 'room-', label: '− Room', color: '#3a4a86' },
   { tool: 'pan', label: 'Pan', color: COLORS.text },
@@ -48,7 +51,12 @@ const HINTS: Partial<Record<EditorTool, string>> = {
   'room+': 'Tap empty space to add a walled 32×16 room',
   'room-': 'Tap a room to delete it',
   pan: 'Drag to scroll',
+  select: 'Drag a box · then Copy / Cut / Fill / Clear it',
+  paste: 'Tap or drag to place the copied block (top-left corner)',
 };
+
+/** Tools that Fill can paint across a selection. */
+const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', 'erase']);
 
 const ZOOMS = [0.5, 0.75, 1, 1.5, 2];
 const PALETTE_W = 92;
@@ -58,10 +66,12 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   const ctl = useMemo(() => new EditorController(), []);
   const [snap, setSnap] = useState<EditorSnapshot>(() => ctl.snapshot());
   const [tool, setTool] = useState<EditorTool>('#');
+  const [fillTool, setFillTool] = useState<EditorTool>('#');
+  const [sourceId, setSourceId] = useState<string | null>(null);
   const [zoomIndex, setZoomIndex] = useState(1);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [modal, setModal] = useState<'export' | 'load' | null>(null);
+  const [modal, setModal] = useState<'export' | 'levels' | 'save' | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   const scale = (ZOOMS[zoomIndex] * (size.height || 1)) / (VIEW_TILES_H * TILE);
@@ -79,7 +89,8 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
       if (cancelled) return;
       if (draft) {
         try {
-          ctl.load(parseLevelCode(JSON.stringify(draft)), false);
+          ctl.load(parseLevelCode(JSON.stringify(draft.level)), false);
+          setSourceId(draft.sourceId);
         } catch {
           // Corrupt draft: keep the blank level.
         }
@@ -91,8 +102,8 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     };
   }, [ctl]);
   useEffect(() => {
-    if (draftLoaded) writeEditorDraft(snap.level);
-  }, [draftLoaded, snap.level, snap.version]);
+    if (draftLoaded) writeEditorDraft({ level: snap.level, sourceId });
+  }, [draftLoaded, snap.level, snap.version, sourceId]);
 
   const focused = useRef(false);
   useEffect(() => {
@@ -112,8 +123,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     return renderEditorFrame({
       level: snap.level, content, width: size.width, height: size.height, scale,
       camX: snap.camX, camY: snap.camY, grid, font, cursor: snap.cursor, sawDrag: snap.sawDrag,
+      selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
     });
-  }, [content, size, scale, grid, font, snap]);
+  }, [content, size, scale, grid, font, snap, tool]);
 
   const gesture = useMemo(() => createEditorGesture(ctl), [ctl]);
 
@@ -131,6 +143,14 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         ctl.undo();
         e.preventDefault();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x')) {
+        ctl.selectionOp(e.key.toLowerCase() === 'c' ? 'copy' : 'cut');
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        setTool('paste');
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        ctl.selectionOp('clear');
+      } else if (e.key === 'Escape') {
+        ctl.selectionOp('deselect');
       }
     };
     const wheel = (e: WheelEvent) => {
@@ -151,15 +171,30 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     setZoomIndex(next);
   };
 
-  const playtest = () => {
+  /** From the level's first room, or (`here`) from the room in the middle of the screen. */
+  const playtest = (here: boolean) => {
     const issues = editorIssues(snap.level);
     if (issues.length) {
       ctl.setMessage(`Can’t playtest: ${issues[0]}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ''}`);
       return;
     }
     ctl.setMessage(null);
-    onPlaytest(cloneLevel(snap.level));
+    onPlaytest(here ? startingFrom(snap.level, ctl.centerRoomIndex(focusLeft)) : cloneLevel(snap.level));
   };
+
+  const pickTool = (t: EditorTool) => {
+    setTool(t);
+    if (FILL_TOOLS.has(t)) setFillTool(t);
+  };
+
+  const open = (next: LevelDef, id: string | null) => {
+    ctl.load(next);
+    ctl.focus(focusLeft, 44);
+    setSourceId(id);
+    setModal(null);
+  };
+
+  const fillLabel = TOOLS.find((t) => t.tool === fillTool)?.label ?? fillTool;
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -185,7 +220,7 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
               accessibilityRole="button"
               accessibilityLabel={`Tool ${t.label}`}
               accessibilityState={{ selected: tool === t.tool }}
-              onPress={() => setTool(t.tool)}
+              onPress={() => pickTool(t.tool)}
               style={[styles.tool, tool === t.tool && styles.toolOn]}
             >
               <View style={[styles.swatch, { backgroundColor: t.color }, t.tool === 'erase' && styles.swatchHollow]} />
@@ -200,28 +235,53 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
         <BarButton label={grid ? 'Grid ✓' : 'Grid'} onPress={() => setGrid((g) => !g)} />
         <BarButton label="−" onPress={() => zoom(-1)} disabled={zoomIndex === 0} />
         <BarButton label="+" onPress={() => zoom(1)} disabled={zoomIndex === ZOOMS.length - 1} />
-        <BarButton label="Load" onPress={() => setModal('load')} />
+        <BarButton label="Levels" onPress={() => setModal('levels')} />
+        <BarButton label="Save" onPress={() => setModal('save')} />
         <BarButton label="Export" onPress={() => setModal('export')} />
-        <BarButton label="▶ Playtest" onPress={playtest} primary />
+        <BarButton label="▶ Here" onPress={() => playtest(true)} primary />
+        <BarButton label="▶ Start" onPress={() => playtest(false)} primary />
         <BarButton label="Exit" onPress={onExit} />
       </View>
 
+      {tool === 'select' && snap.selection && (
+        <View style={[styles.selBar, { left: insets.left + PALETTE_W + 16, bottom: 40 }]}>
+          <Text style={styles.small}>{snap.selection.w}×{snap.selection.h}</Text>
+          <BarButton label="Copy" onPress={() => ctl.selectionOp('copy')} />
+          <BarButton label="Cut" onPress={() => ctl.selectionOp('cut')} />
+          <BarButton label={`Fill ${fillLabel}`} onPress={() => ctl.selectionOp('fill', fillTool)} />
+          <BarButton label="Clear" onPress={() => ctl.selectionOp('clear')} />
+          <BarButton label="✕" onPress={() => ctl.selectionOp('deselect')} />
+        </View>
+      )}
+
       <View pointerEvents="none" style={[styles.status, { left: insets.left + PALETTE_W + 16, bottom: 10 }]}>
         <Text style={[styles.statusText, message && { color: COLORS.spike }]} numberOfLines={2}>
-          {level.name} · {level.rooms.length} room{level.rooms.length === 1 ? '' : 's'} · {hint}
+          {level.name}{sourceId ? '' : ' (unsaved)'} · {level.rooms.length} room{level.rooms.length === 1 ? '' : 's'} · {hint}
         </Text>
       </View>
 
       {modal === 'export' && (
         <ExportModal level={level} onRename={(name) => ctl.rename(name)} onClose={() => setModal(null)} />
       )}
-      {modal === 'load' && (
-        <LoadModal
-          onLoad={(next) => {
-            ctl.load(next);
-            ctl.focus(focusLeft, 44);
+      {modal === 'save' && (
+        <SaveModal
+          level={level}
+          sourceId={sourceId}
+          onRename={(name) => ctl.rename(name)}
+          onSubtitle={(sub) => ctl.setSubtitle(sub)}
+          onSaved={(id, position) => {
+            setSourceId(id);
+            ctl.setMessage(`Saved ${id}.json as level ${position}`);
             setModal(null);
           }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'levels' && (
+        <LevelsModal
+          currentId={sourceId}
+          onOpen={open}
+          onDeleted={(id) => id === sourceId && setSourceId(null)}
           onClose={() => setModal(null)}
         />
       )}
@@ -308,49 +368,179 @@ function ExportModal({ level, onRename, onClose }: { level: LevelDef; onRename: 
         <BarButton label={copied === 'file' ? 'Copied ✓' : 'Copy to Clipboard'} onPress={() => copy('file')} primary />
         <BarButton label={copied === 'json' ? 'Copied ✓' : 'Copy as JSON'} onPress={() => copy('json')} />
         <Text style={styles.small}>
-          Paste into src/levels/{level.id}.ts, then add it to LEVELS in src/levels/index.ts
+          For your levels use Save instead: it writes src/levels/release/{level.id}.json (needs npm run levels).
         </Text>
       </View>
     </Sheet>
   );
 }
 
-function LoadModal({ onLoad, onClose }: { onLoad: (level: LevelDef) => void; onClose: () => void }) {
+function SaveModal({
+  level, sourceId, onRename, onSubtitle, onSaved, onClose,
+}: {
+  level: LevelDef;
+  sourceId: string | null;
+  onRename: (name: string) => void;
+  onSubtitle: (subtitle: string) => void;
+  onSaved: (id: string, position: number) => void;
+  onClose: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const issues = editorIssues(level);
+  const target =
+    sourceId === level.id ? 'overwrites this level' : sourceId ? `renames ${sourceId}` : 'adds it as the last level';
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const { position } = await savePackLevel(cloneLevel(level), sourceId);
+      onSaved(level.id, position);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet title="SAVE TO RELEASE PACK" onClose={onClose}>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Name</Text>
+        <TextInput
+          value={level.name}
+          onChangeText={onRename}
+          style={[styles.input, { flex: 1 }]}
+          placeholder="Level name"
+          placeholderTextColor={COLORS.dim}
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Subtitle</Text>
+        <TextInput
+          value={level.subtitle}
+          onChangeText={onSubtitle}
+          style={[styles.input, { flex: 1 }]}
+          placeholder="Shown under the name on level select"
+          placeholderTextColor={COLORS.dim}
+          autoCorrect={false}
+        />
+      </View>
+      <Text style={styles.small}>
+        Writes src/levels/release/{level.id}.json ({target}). Commit the files to ship them.
+      </Text>
+      {issues.length > 0 && <Text style={styles.error}>Saving anyway, but not playable yet: {issues.join(' · ')}</Text>}
+      <View style={styles.row}>
+        <BarButton label={busy ? 'Saving…' : 'Save'} onPress={save} primary disabled={busy || !level.id} />
+        {error && <Text style={styles.error}>{error}</Text>}
+      </View>
+    </Sheet>
+  );
+}
+
+function LevelsModal({
+  currentId, onOpen, onDeleted, onClose,
+}: {
+  currentId: string | null;
+  onOpen: (level: LevelDef, sourceId: string | null) => void;
+  onDeleted: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [pack, setPack] = useState<LevelDef[] | null>(null);
+  const [offline, setOffline] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(
+    () =>
+      fetchPack()
+        .then((levels) => {
+          setPack(levels);
+          setOffline(null);
+        })
+        .catch((e: Error) => {
+          setPack(RELEASE_LEVELS);
+          setOffline(e.message);
+        }),
+    [],
+  );
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const act = (p: Promise<unknown>) => {
+    setError(null);
+    p.then(refresh).catch((e: Error) => setError(e.message));
+  };
+  const move = (i: number, d: number) => {
+    if (!pack || i + d < 0 || i + d >= pack.length) return;
+    const ids = pack.map((l) => l.id);
+    [ids[i], ids[i + d]] = [ids[i + d], ids[i]];
+    act(reorderPack(ids));
+  };
+  const remove = (id: string) => {
+    if (confirm !== id) return setConfirm(id);
+    setConfirm(null);
+    act(deletePackLevel(id).then(() => onDeleted(id)));
+  };
   const loadText = () => {
     try {
-      onLoad(parseLevelCode(text));
+      onOpen(parseLevelCode(text), null);
     } catch (e) {
       setError((e as Error).message);
     }
   };
+
   return (
-    <Sheet title="LOAD LEVEL" onClose={onClose}>
+    <Sheet title="LEVELS" onClose={onClose}>
       <View style={[styles.row, { flexWrap: 'wrap' }]}>
-        <BarButton label="New blank level" onPress={() => onLoad(blankLevel())} primary />
-        {LEVELS.map((l) => (
-          <BarButton key={l.id} label={l.name} onPress={() => onLoad(cloneLevel(l))} />
+        <BarButton label="+ New level" onPress={() => onOpen(blankLevel(), null)} primary />
+        <Text style={offline ? styles.error : styles.small}>
+          {offline
+            ? `${offline} · showing the copy bundled in the app (open only)`
+            : `${pack?.length ?? '…'} levels in src/levels/release/ · this order is the unlock order`}
+        </Text>
+      </View>
+      {error && <Text style={styles.error}>{error}</Text>}
+      <ScrollView style={styles.list} contentContainerStyle={{ padding: 6, gap: 4 }}>
+        {pack?.length === 0 && <Text style={styles.small}>No levels yet. Build one, then press Save.</Text>}
+        {pack?.map((l, i) => (
+          <View key={l.id} style={[styles.levelRow, l.id === currentId && styles.levelRowOn]}>
+            <Text style={styles.levelNum}>{i + 1}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label} numberOfLines={1}>{l.name}</Text>
+              <Text style={styles.small} numberOfLines={1}>{l.id} · {l.rooms.length} rooms</Text>
+            </View>
+            <BarButton label="Open" onPress={() => onOpen(cloneLevel(l), l.id)} primary />
+            <BarButton label="↑" onPress={() => move(i, -1)} disabled={!!offline || i === 0} />
+            <BarButton label="↓" onPress={() => move(i, 1)} disabled={!!offline || i === pack.length - 1} />
+            <BarButton label={confirm === l.id ? 'Sure?' : 'Delete'} onPress={() => remove(l.id)} disabled={!!offline} />
+          </View>
+        ))}
+      </ScrollView>
+      <View style={[styles.row, { flexWrap: 'wrap' }]}>
+        <Text style={styles.small}>Demo levels (dev only, never shipped):</Text>
+        {DEV_LEVELS.map((l) => (
+          <BarButton key={l.id} label={l.name} onPress={() => onOpen(cloneLevel(l), null)} />
         ))}
       </View>
-      <Text style={styles.small}>…or paste level code (JSON or a src/levels/*.ts file):</Text>
-      <TextInput
-        value={text}
-        onChangeText={(t) => {
-          setText(t);
-          setError(null);
-        }}
-        multiline
-        style={[styles.input, styles.codeBox, styles.code]}
-        placeholder="{ id: 'my-level', name: 'My Level', rooms: [ ... ] }"
-        placeholderTextColor={COLORS.dim}
-        autoCapitalize="none"
-        autoCorrect={false}
-        textAlignVertical="top"
-      />
       <View style={styles.row}>
-        <BarButton label="Load pasted code" onPress={loadText} disabled={!text.trim()} />
-        {error && <Text style={styles.error}>{error}</Text>}
+        <TextInput
+          value={text}
+          onChangeText={(t) => {
+            setText(t);
+            setError(null);
+          }}
+          multiline
+          style={[styles.input, styles.code, { flex: 1, height: 56 }]}
+          placeholder="…or paste level code (JSON or a .ts level file)"
+          placeholderTextColor={COLORS.dim}
+          autoCapitalize="none"
+          autoCorrect={false}
+          textAlignVertical="top"
+        />
+        <BarButton label="Load pasted" onPress={loadText} disabled={!text.trim()} />
       </View>
     </Sheet>
   );
@@ -377,6 +567,12 @@ const styles = StyleSheet.create({
   btnPrimary: { backgroundColor: COLORS.player, borderColor: COLORS.player },
   barText: { color: COLORS.text, fontSize: 12, fontWeight: '800' },
   status: { position: 'absolute', right: 16 },
+  selBar: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 6 },
+  fieldLabel: { width: 64 },
+  list: { flex: 1, borderRadius: 10, backgroundColor: '#070a16', borderWidth: 1, borderColor: '#1c2547' },
+  levelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6, borderRadius: 8 },
+  levelRowOn: { backgroundColor: '#18213f' },
+  levelNum: { color: COLORS.player, fontSize: 14, fontWeight: '900', width: 34, textAlign: 'right' },
   statusText: { color: COLORS.dim, fontSize: 11, fontWeight: '600' },
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(3,4,10,0.8)',

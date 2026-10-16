@@ -1,11 +1,16 @@
 import type { LevelDef } from '../types';
-import { dashLab } from './dashLab';
-import { firstLight } from './firstLight';
-import { labyrinth } from './labyrinth';
-import { sawMill } from './sawMill';
-import { switchback } from './switchback';
-import { undercroft } from './undercroft';
+import { DEV_LEVELS } from './dev';
+import { RELEASE_LEVELS } from './release';
 
-export const LEVELS: LevelDef[] = [firstLight, dashLab, labyrinth, switchback, sawMill, undercroft];
+export { DEV_LEVELS, RELEASE_LEVELS };
 
-export const levelById = (id: string) => LEVELS.find((l) => l.id === id);
+/**
+ * Editor + demo levels. On in dev builds (Expo Go / `expo start`); off in release builds unless
+ * EXPO_PUBLIC_DEV_TOOLS=1 is set at build time.
+ */
+export const DEV_TOOLS = (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.EXPO_PUBLIC_DEV_TOOLS === '1';
+
+export type LevelPack = 'release' | 'dev';
+
+/** Players only ever get the release pack; the demo pack is reachable in dev builds. */
+export const packLevels = (pack: LevelPack): LevelDef[] => (pack === 'dev' && DEV_TOOLS ? DEV_LEVELS : RELEASE_LEVELS);
