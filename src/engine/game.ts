@@ -31,6 +31,16 @@ export interface Player {
   scaleX: number;
   scaleY: number;
   portalLock: number;
+  /** Auto-run: stays put after (re)spawning until the first jump/dash input. */
+  running: boolean;
+  /** Auto-run: released a wall with a down-swipe; no cling or run until landing. */
+  wallDrop: boolean;
+  wallDropDir: number;
+}
+
+export interface GameOptions {
+  /** Player runs in the facing direction by itself; walls flip it via wall jumps. */
+  autoRun?: boolean;
 }
 
 interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[] }
@@ -50,6 +60,7 @@ export const PARTICLE_COLORS = ['#4de8ff', '#ffd23f', '#3dff9a', '#8b93b8', '#ff
 
 export class Game {
   readonly level: LevelDef;
+  readonly autoRun: boolean;
   readonly world: World;
   player: Player;
   phase: Phase = 'ready';
@@ -85,8 +96,9 @@ export class Game {
   private transition = { from: { x: 0, y: 0 }, to: { x: 0, y: 0 }, t: 0 };
   private rng = makeRng(1337);
 
-  constructor(level: LevelDef) {
+  constructor(level: LevelDef, opts: GameOptions = {}) {
     this.level = level;
+    this.autoRun = !!opts.autoRun;
     this.world = buildWorld(level);
     this.room = this.world.rooms[0];
     this.checkpoint = { ...this.world.start };
@@ -173,8 +185,10 @@ export class Game {
     if (input.jumpPresses !== this.lastJumpPresses) {
       this.lastJumpPresses = input.jumpPresses;
       p.jumpBuffer = C.JUMP_BUFFER_TIME;
+      p.running = true;
     }
     if (input.dashQueue) {
+      p.running = true;
       p.bufferedDash = input.dashQueue;
       p.dashBuffer = C.DASH_BUFFER_TIME;
       input.dashQueue = null;
@@ -185,11 +199,23 @@ export class Game {
 
   private freshPlayer(pos: Vec2): Player {
     return {
-      x: pos.x, y: pos.y, vx: 0, vy: 0, facing: 1, onGround: true, wallDir: 0,
+      x: pos.x, y: pos.y, vx: 0, vy: 0, facing: this.autoRun ? this.openSide(pos) : 1, onGround: true, wallDir: 0,
       dashes: 1, dashTimer: 0, dashDir: { x: 1, y: 0 }, varJumpTimer: 0, varJumpSpeed: 0,
       coyote: 0, jumpBuffer: 0, dashBuffer: 0, bufferedDash: null, forceMoveTimer: 0, forceMoveDir: 0,
-      scaleX: 1, scaleY: 1, portalLock: -1,
+      scaleX: 1, scaleY: 1, portalLock: -1, running: !this.autoRun, wallDrop: false, wallDropDir: 0,
     };
+  }
+
+  /** Direction with more free run-way on the spawn row (auto-run starts that way). */
+  private openSide(pos: Vec2): number {
+    const tx = Math.floor((pos.x + C.PLAYER_W / 2) / C.TILE);
+    const ty = Math.floor((pos.y + C.PLAYER_H / 2) / C.TILE);
+    const run = (dir: number) => {
+      let n = 0;
+      while (n < 64 && !this.isSolidTile(tx + dir * (n + 1), ty)) n++;
+      return n;
+    };
+    return run(-1) > run(1) ? -1 : 1;
   }
 
   private updatePlayer(input: InputState, dt: number) {
@@ -208,6 +234,10 @@ export class Game {
         this.burst(p.x + C.PLAYER_W / 2, p.y + C.PLAYER_H, 4, DUST_COLOR, 30, -Math.PI / 2, Math.PI * 0.8);
       }
       this.touchCrumbleBelow();
+      if (p.wallDrop) {
+        p.wallDrop = false;
+        p.facing = -p.wallDropDir;
+      }
     } else {
       p.coyote -= dt;
     }
@@ -219,11 +249,16 @@ export class Game {
     p.jumpBuffer -= dt;
     p.dashBuffer -= dt;
     p.forceMoveTimer -= dt;
-    if (input.moveX !== 0) p.facing = input.moveX;
+    if (input.moveX !== 0 && !this.autoRun) p.facing = input.moveX;
 
-    // Dash start
-    if (p.dashBuffer > 0 && p.bufferedDash && p.dashes > 0) {
-      this.startDash(p.bufferedDash);
+    // Dash start (auto-run: a straight down swipe on a wall is a wall drop instead)
+    const swipe = p.dashBuffer > 0 ? p.bufferedDash : null;
+    if (swipe && this.autoRun && swipe.x === 0 && swipe.y > 0 && p.wallDir !== 0 && p.dashTimer <= 0) {
+      this.wallDrop();
+      p.bufferedDash = null;
+      p.dashBuffer = 0;
+    } else if (swipe && p.dashes > 0) {
+      this.startDash(swipe);
       p.bufferedDash = null;
       p.dashBuffer = 0;
     }
@@ -245,7 +280,7 @@ export class Game {
     }
 
     if (p.dashTimer <= 0) {
-      const moveX = p.forceMoveTimer > 0 ? p.forceMoveDir : input.moveX;
+      const moveX = p.forceMoveTimer > 0 ? p.forceMoveDir : this.autoRun ? (p.running && !p.wallDrop ? p.facing : 0) : input.moveX;
       const target = moveX * C.RUN_SPEED;
       let rate: number;
       if (Math.abs(p.vx) > C.RUN_SPEED && Math.sign(p.vx) === moveX) rate = C.OVERSPEED_DECEL;
@@ -254,7 +289,7 @@ export class Game {
       p.vx = approach(p.vx, target, rate * dt);
 
       let maxFall = C.MAX_FALL;
-      const clinging = p.wallDir !== 0 && moveX === p.wallDir && p.vy >= 0;
+      const clinging = p.wallDir !== 0 && p.vy >= 0 && (this.autoRun ? !p.wallDrop : moveX === p.wallDir);
       if (clinging) maxFall = C.WALL_SLIDE_MAX;
       const g = input.jumpHeld && Math.abs(p.vy) < C.HALF_GRAV_THRESHOLD ? C.GRAVITY * 0.5 : C.GRAVITY;
       p.vy = p.vy > maxFall ? approach(p.vy, maxFall, C.GRAVITY * 2 * dt) : approach(p.vy, maxFall, g * dt);
@@ -300,6 +335,7 @@ export class Game {
   private wallJump(wall: number) {
     const p = this.player;
     p.jumpBuffer = 0;
+    p.wallDrop = false;
     p.vx = -wall * C.WALL_JUMP_H;
     p.vy = C.JUMP_SPEED;
     p.varJumpSpeed = p.vy;
@@ -326,6 +362,7 @@ export class Game {
     p.vy = (dy / len) * C.DASH_SPEED;
     p.varJumpTimer = 0;
     p.forceMoveTimer = 0;
+    p.wallDrop = false;
     if (dx !== 0) p.facing = Math.sign(dx);
     p.scaleX = dx !== 0 && dy === 0 ? 1.4 : dy !== 0 && dx === 0 ? 0.7 : 1.1;
     p.scaleY = dx !== 0 && dy === 0 ? 0.7 : dy !== 0 && dx === 0 ? 1.4 : 1.1;
@@ -333,6 +370,20 @@ export class Game {
     this.shake = Math.max(this.shake, 2.2);
     this.events.push({ type: 'dash' });
     this.burst(p.x + C.PLAYER_W / 2, p.y + C.PLAYER_H / 2, 8, PLAYER_COLOR, 60, Math.atan2(-dy, -dx), 1.6);
+  }
+
+  private wallDrop() {
+    const p = this.player;
+    p.wallDrop = true;
+    p.wallDropDir = p.wallDir;
+    p.vx = 0;
+    p.vy = Math.max(p.vy, C.WALL_DROP_SPEED);
+    p.varJumpTimer = 0;
+    p.forceMoveTimer = 0;
+    p.scaleX = 0.8;
+    p.scaleY = 1.2;
+    this.events.push({ type: 'walldrop' });
+    this.burst(p.x + (p.wallDir > 0 ? C.PLAYER_W : 0), p.y, 4, DUST_COLOR, 25, Math.PI / 2, 1);
   }
 
   private spawnGhost(dt: number) {

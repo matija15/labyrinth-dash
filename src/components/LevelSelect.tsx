@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatTime } from '../engine/save';
-import type { LevelDef, SaveData } from '../types';
+import type { ControlScheme, LevelDef, SaveData } from '../types';
 import { COLORS } from './renderer';
 
 interface Props {
@@ -9,10 +9,12 @@ interface Props {
   save: SaveData;
   onPlay: (id: string) => void;
   onReset: () => void;
+  onControls: (controls: ControlScheme) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls }: Props) {
   const insets = useSafeAreaInsets();
+  const controls = save.controls ?? 'auto';
   return (
     <ScrollView
       style={styles.root}
@@ -23,9 +25,19 @@ export function LevelSelect({ levels, save, onPlay, onReset }: Props) {
           <Text style={styles.title}>LABYRINTH DASH</Text>
           <Text style={styles.tag}>precision platformer · {save.totalDeaths} total deaths</Text>
         </View>
-        <Pressable onLongPress={onReset} delayLongPress={1200}>
-          <Text style={styles.reset}>hold to reset save</Text>
-        </Pressable>
+        <View style={styles.headerRight}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Toggle control scheme"
+            onPress={() => onControls(controls === 'auto' ? 'manual' : 'auto')}
+            style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.controlsText}>CONTROLS · {controls === 'auto' ? 'AUTO-RUN' : 'RUN PADS'}</Text>
+          </Pressable>
+          <Pressable onLongPress={onReset} delayLongPress={1200}>
+            <Text style={styles.reset}>hold to reset save</Text>
+          </Pressable>
+        </View>
       </View>
       <View style={styles.row}>
         {levels.map((level, i) => {
@@ -59,8 +71,11 @@ export function LevelSelect({ levels, save, onPlay, onReset }: Props) {
         })}
       </View>
       <Text style={styles.help}>
-        Hold bottom-left / bottom-right to run · Tap above to jump (hold = higher) · Swipe to dash in 8 directions ·
-        Push into walls to slide, jump off them to wall-jump
+        {controls === 'auto'
+          ? 'You run automatically · Tap anywhere to jump (hold = higher) · Swipe to dash in 8 directions · ' +
+            'Walls grab you automatically; tap jump to leap off and turn around · Swipe down on a wall to drop'
+          : 'Hold bottom-left / bottom-right to run · Tap above to jump (hold = higher) · Swipe to dash in 8 directions · ' +
+            'Push into walls to slide, jump off them to wall-jump'}
       </Text>
     </ScrollView>
   );
@@ -73,6 +88,9 @@ const styles = StyleSheet.create({
   title: { color: COLORS.player, fontSize: 30, fontWeight: '900', letterSpacing: 6 },
   tag: { color: COLORS.dim, fontSize: 13, marginTop: 2 },
   reset: { color: '#3a4470', fontSize: 11 },
+  headerRight: { alignItems: 'flex-end', gap: 8 },
+  controls: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#24305a', backgroundColor: '#0d1224' },
+  controlsText: { color: COLORS.player, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   row: { flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
   card: {
     flexGrow: 1, flexBasis: 200, padding: 16, borderRadius: 16, backgroundColor: '#0d1224',

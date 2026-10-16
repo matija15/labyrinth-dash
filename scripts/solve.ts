@@ -1,12 +1,16 @@
 /**
  * Brute-force solvability check for built-in levels: breadth-first search over short
- * input macros using the real deterministic engine. Usage: npx tsx scripts/solve.ts [levelId]
+ * input macros using the real deterministic engine. Plays the default auto-run scheme; pass
+ * --manual for the run-pad scheme. Usage: npx tsx scripts/solve.ts [levelId] [--manual]
  */
 import { Game } from '../src/engine/game';
 import { LEVELS } from '../src/levels';
 import type { InputState, Vec2 } from '../src/types';
 
 const FRAMES = 6;
+const MANUAL = process.argv.includes('--manual');
+/** Auto-run ignores the movement axis, so there is nothing to branch on. */
+const MOVES = MANUAL ? [-1, 0, 1] : [0];
 const BEAM = 2500;
 
 /** Keep a spatially diverse subset: round-robin over coarse cells so no region floods the beam. */
@@ -68,31 +72,35 @@ function key(n: Node) {
   return [
     g.room.index, Math.round(p.x / 4), Math.round(p.y / 4), Math.round(p.vx / 45), Math.round(p.vy / 60), p.dashes,
     g.phase, Math.round((g as unknown as { transition: { t: number } }).transition.t * 40),
-    p.onGround ? 1 : 0, p.wallDir, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState),
+    p.onGround ? 1 : 0, p.wallDir, p.facing, p.running ? 1 : 0, p.wallDrop ? 1 : 0, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState),
   ].join(',');
 }
 
 function solve(levelId: string, maxNodes = 8_000_000) {
   const level = LEVELS.find((l) => l.id === levelId)!;
-  const root = new Game(level);
+  const root = new Game(level, { autoRun: !MANUAL });
   root.step({ moveX: 0, jumpHeld: false, jumpPresses: 0, dashQueue: null });
   let frontier: Node[] = [{ g: root, presses: 0, held: false, visited: 1, path: [] }];
   let best = 0;
   const seen = new Set<string>([key(frontier[0])]);
   const roomsSeen = new Set<number>([root.room.index]);
   let expanded = 0;
+  /** Pre-milestone frontiers, resumed if every node past a milestone dies (greedy dead end). */
+  const fallback: Node[][] = [];
   for (let depth = 0; frontier.length && expanded < maxNodes; depth++) {
     const next: Node[] = [];
     for (const n of frontier) {
       const actions: { m: number; jump: 'none' | 'press' | 'hold'; dash: Vec2 | null; label: string }[] = [];
       const busy = n.g.phase === 'transition';
       if (busy) actions.push({ m: 0, jump: n.held ? 'hold' : 'none', dash: null, label: 'wait' });
-      else for (const m of [-1, 0, 1]) {
+      else for (const m of MOVES) {
         actions.push({ m, jump: 'none', dash: null, label: `m${m}` });
         actions.push({ m, jump: 'press', dash: null, label: `m${m}J` });
         if (n.held && n.g.player.vy < 0) actions.push({ m, jump: 'hold', dash: null, label: `m${m}H` });
       }
-      if (!busy && n.g.player.dashes > 0) for (const d of DIRS) actions.push({ m: d.x, jump: 'none', dash: d, label: `D${d.x},${d.y}` });
+      if (!busy && n.g.player.dashes > 0) for (const d of DIRS) actions.push({ m: MANUAL ? d.x : 0, jump: 'none', dash: d, label: `D${d.x},${d.y}` });
+      if (!MANUAL && !busy && n.g.player.wallDir !== 0 && n.g.player.dashes === 0)
+        actions.push({ m: 0, jump: 'none', dash: { x: 0, y: 1 }, label: 'drop' });
       for (const a of actions) {
         expanded++;
         const g = clone(n.g);
@@ -127,8 +135,14 @@ function solve(levelId: string, maxNodes = 8_000_000) {
     if (top > best) {
       best = top;
       frontier = next.filter((x) => milestone(x) === top);
+      fallback.push(diverse(next.filter((x) => milestone(x) < top), BEAM));
       console.log(`  milestone ${top} at depth ${depth}: keeping ${frontier.length}/${next.length}`);
     } else frontier = next;
+    while (!frontier.length && fallback.length) {
+      frontier = fallback.pop()!;
+      best = frontier.reduce((m, x) => Math.max(m, milestone(x)), 0);
+      console.log(`  dead end at depth ${depth}: resuming ${frontier.length} nodes at milestone ${best}`);
+    }
     if (frontier.length > BEAM) frontier = diverse(frontier, BEAM);
     if (depth % 10 === 0) {
       const best = frontier.reduce((m, n) => Math.max(m, n.g.player.x), -1e9);
@@ -138,7 +152,9 @@ function solve(levelId: string, maxNodes = 8_000_000) {
   return { ok: false, expanded, rooms: roomsSeen.size, frontier: frontier.length };
 }
 
-const ids = process.argv[2] ? [process.argv[2]] : LEVELS.map((l) => l.id);
+const arg = process.argv.slice(2).find((a) => !a.startsWith('--'));
+const ids = arg ? [arg] : LEVELS.map((l) => l.id);
+console.log(`scheme: ${MANUAL ? 'manual run pads' : 'auto-run'}`);
 let failed = false;
 for (const id of ids) {
   console.log(`solving ${id}…`);

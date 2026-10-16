@@ -28,6 +28,8 @@ export const WALL_SLIDE_MAX = 36;
 export const WALL_JUMP_H = 130;
 export const WALL_JUMP_FORCE_TIME = 0.16;
 export const WALL_JUMP_CHECK = 2;
+/** Auto-run wall drop: initial fall speed after releasing the wall. */
+export const WALL_DROP_SPEED = 60;
 
 export const DASH_SPEED = 240;
 export const DASH_END_SPEED = 160;

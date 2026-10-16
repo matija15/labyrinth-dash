@@ -4,7 +4,8 @@ import type { TouchController } from '../engine/input';
 
 /**
  * Keyboard controls for Expo web / emulators with a hardware keyboard:
- * ←/→ or A/D move, Z/Space/C jump (hold for height), X/Shift dash toward held arrows (8-way), Esc/P pause.
+ * ←/→ or A/D move (run-pad scheme only), Z/Space/C jump (hold for height), X/Shift dash toward held
+ * arrows (8-way; X + ↓ on a wall is a wall drop in auto-run), Esc/P pause.
  */
 export function useKeyboardControls(touch: TouchController, togglePause: () => void) {
   useEffect(() => {
