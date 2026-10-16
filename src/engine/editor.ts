@@ -8,7 +8,7 @@ export const ROOM_H = VIEW_TILES_H;
 
 export type EditorTool =
   | '#' | '^' | '=' | 'O' | 'K' | 'D' | 'J' | 'S' | 'G'
-  | 'saw' | 'erase' | 'room+' | 'room-' | 'pan';
+  | 'saw' | 'erase' | 'room+' | 'room-' | 'pan' | 'select' | 'paste';
 
 export interface TileRect { x: number; y: number; w: number; h: number }
 
@@ -148,7 +148,7 @@ export function eraseSawsAt(level: LevelDef, tx: number, ty: number): boolean {
  * Mutates `level`; returns whether anything changed.
  */
 export function paintTile(level: LevelDef, tool: EditorTool, tx: number, ty: number): boolean {
-  if (tool === 'pan' || tool === 'saw' || tool === 'room-') return false;
+  if (tool === 'pan' || tool === 'saw' || tool === 'room-' || tool === 'select' || tool === 'paste') return false;
   if (tool === 'room+') return addRoomAt(level, tx, ty) >= 0;
   if (tool === 'erase') {
     const sawGone = eraseSawsAt(level, tx, ty);
@@ -220,6 +220,124 @@ export function editorIssues(level: LevelDef): string[] {
     issues.push(e.replace(`${level.id}: `, '').replace(`${level.id}/`, ''));
   }
   return issues;
+}
+
+// ------------------------------------------------------------------ selection / clipboard / playtest
+
+/** A copied block of tiles; `' '` marks tiles outside every room. Saw coordinates are relative to the block. */
+export interface Clip {
+  w: number;
+  h: number;
+  rows: string[];
+  saws: SawDef[];
+}
+
+export const normRect = (ax: number, ay: number, bx: number, by: number): TileRect => ({
+  x: Math.min(ax, bx), y: Math.min(ay, by), w: Math.abs(bx - ax) + 1, h: Math.abs(by - ay) + 1,
+});
+
+const shiftSaw = (s: SawDef, dx: number, dy: number): SawDef =>
+  s.kind === 'orbit'
+    ? { ...s, center: [s.center[0] + dx, s.center[1] + dy] }
+    : { ...s, points: s.points.map(([x, y]): [number, number] => [x + dx, y + dy]) };
+
+/** Whether every waypoint / orbit center of room `r`'s saw lies inside `rect` (world tiles). */
+const sawInside = (s: SawDef, r: RoomDef, rect: TileRect) =>
+  sawPoints(s).every(([x, y]) => {
+    const wx = x + r.x;
+    const wy = y + r.y;
+    return wx >= rect.x && wx <= rect.x + rect.w && wy >= rect.y && wy <= rect.y + rect.h;
+  });
+
+export function copyRect(level: LevelDef, rect: TileRect): Clip {
+  const rows: string[] = [];
+  for (let y = rect.y; y < rect.y + rect.h; y++) {
+    let row = '';
+    for (let x = rect.x; x < rect.x + rect.w; x++) row += charAt(level, x, y) ?? ' ';
+    rows.push(row);
+  }
+  const saws: SawDef[] = [];
+  for (const r of level.rooms)
+    for (const s of r.saws ?? []) if (sawInside(s, r, rect)) saws.push(shiftSaw(s, r.x - rect.x, r.y - rect.y));
+  return { w: rect.w, h: rect.h, rows, saws };
+}
+
+/** Empties every tile and removes every saw inside `rect`. */
+export function clearRect(level: LevelDef, rect: TileRect): boolean {
+  let changed = false;
+  for (let y = rect.y; y < rect.y + rect.h; y++)
+    for (let x = rect.x; x < rect.x + rect.w; x++) {
+      const i = roomIndexAt(level, x, y);
+      if (i >= 0) changed = setChar(level.rooms[i], x - level.rooms[i].x, y - level.rooms[i].y, '.') || changed;
+    }
+  for (const r of level.rooms) {
+    if (!r.saws?.length) continue;
+    const keep = r.saws.filter((s) => !sawInside(s, r, rect));
+    if (keep.length === r.saws.length) continue;
+    changed = true;
+    if (keep.length) r.saws = keep;
+    else delete r.saws;
+  }
+  return changed;
+}
+
+/** Paints `tool` on every tile of `rect` (spikes still orient themselves per tile). */
+export function fillRect(level: LevelDef, tool: EditorTool, rect: TileRect): boolean {
+  let changed = false;
+  for (let y = rect.y; y < rect.y + rect.h; y++)
+    for (let x = rect.x; x < rect.x + rect.w; x++) changed = paintTile(level, tool, x, y) || changed;
+  return changed;
+}
+
+/** Stamps a clip with its top-left corner on world tile (tx, ty), adding rooms where it lands outside them. */
+export function pasteClip(level: LevelDef, clip: Clip, tx: number, ty: number): boolean {
+  let changed = false;
+  if (clip.rows.some((row) => row.includes('G')))
+    for (const r of level.rooms) r.tiles = r.tiles.map((row) => row.replace(/G/g, '.'));
+  for (let y = 0; y < clip.h; y++)
+    for (let x = 0; x < clip.w; x++) {
+      const ch = clip.rows[y][x];
+      if (ch === ' ') continue;
+      let i = roomIndexAt(level, tx + x, ty + y);
+      if (i < 0 && ch !== '.') i = addRoomAt(level, tx + x, ty + y);
+      if (i < 0) continue;
+      const r = level.rooms[i];
+      changed = setChar(r, tx + x - r.x, ty + y - r.y, ch) || changed;
+    }
+  for (const s of clip.saws) {
+    const [ax, ay] = sawPoints(s)[0];
+    const i = roomIndexAt(level, Math.floor(tx + ax), Math.floor(ty + ay));
+    if (i < 0) continue;
+    const r = level.rooms[i];
+    r.saws = [...(r.saws ?? []), shiftSaw(s, tx - r.x, ty - r.y)];
+    changed = true;
+  }
+  return changed;
+}
+
+/** Index of the room containing tile (tx, ty), or else the room whose center is closest. */
+export function nearestRoom(level: LevelDef, tx: number, ty: number): number {
+  const i = roomIndexAt(level, tx, ty);
+  if (i >= 0) return i;
+  let best = 0;
+  let bestD = Infinity;
+  level.rooms.forEach((r, j) => {
+    const b = roomRect(r);
+    const d = Math.hypot(b.x + b.w / 2 - tx, b.y + b.h / 2 - ty);
+    if (d < bestD) {
+      bestD = d;
+      best = j;
+    }
+  });
+  return best;
+}
+
+/** A copy of the level that starts at room `roomIndex`'s first spawn (the engine starts in the first room). */
+export function startingFrom(level: LevelDef, roomIndex: number): LevelDef {
+  const copy = cloneLevel(level);
+  const [room] = copy.rooms.splice(roomIndex, 1);
+  copy.rooms.unshift(room);
+  return copy;
 }
 
 // ------------------------------------------------------------------ export / import

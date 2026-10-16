@@ -1,6 +1,9 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMemo } from 'react';
 import { formatTime } from '../engine/save';
+import { validateLevel } from '../engine/world';
+import type { LevelPack } from '../levels';
 import type { ControlScheme, LevelDef, SaveData } from '../types';
 import { COLORS } from './renderer';
 
@@ -11,11 +14,16 @@ interface Props {
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
   onEditor: () => void;
+  /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
+  devTools: boolean;
+  pack: LevelPack;
+  onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
+  const problems = useMemo(() => levels.map((l) => validateLevel(l)[0] ?? null), [levels]);
   return (
     <ScrollView
       style={styles.root}
@@ -35,26 +43,54 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           >
             <Text style={styles.controlsText}>CONTROLS · {controls === 'auto' ? 'AUTO-RUN' : 'RUN PADS'}</Text>
           </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Level editor"
-            onPress={onEditor}
-            style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.controlsText}>LEVEL EDITOR</Text>
-          </Pressable>
+          {devTools && (
+            <View style={styles.devRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Toggle level pack"
+                onPress={() => onPack(pack === 'release' ? 'dev' : 'release')}
+                style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.controlsText}>PACK · {pack === 'release' ? 'RELEASE' : 'DEMO'}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Level editor"
+                onPress={onEditor}
+                style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+              >
+                <Text style={styles.controlsText}>LEVEL EDITOR</Text>
+              </Pressable>
+            </View>
+          )}
           <Pressable onLongPress={onReset} delayLongPress={1200}>
             <Text style={styles.reset}>hold to reset save</Text>
           </Pressable>
         </View>
       </View>
+      {devTools && (
+        <Text style={styles.devNote}>
+          DEV BUILD · all levels unlocked ·{' '}
+          {pack === 'release' ? 'players only ever see this release pack' : 'demo levels are never shipped'}
+        </Text>
+      )}
       <View style={styles.row}>
+        {levels.length === 0 && (
+          <Text style={styles.help}>
+            {devTools
+              ? 'No release levels yet. Open the LEVEL EDITOR, build one and press Save (with npm run levels running).'
+              : 'New levels are coming soon.'}
+          </Text>
+        )}
         {levels.map((level, i) => {
           const rec = save.levels[level.id];
-          const unlocked = i === 0 || !!save.levels[levels[i - 1].id]?.completed;
+          const problem = problems[i];
+          const unlocked = !problem && (devTools || i === 0 || !!save.levels[levels[i - 1].id]?.completed);
           return (
             <Pressable
               key={level.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Level ${i + 1} ${level.name}`}
               disabled={!unlocked}
               onPress={() => onPlay(level.id)}
               style={({ pressed }) => [styles.card, !unlocked && styles.locked, pressed && { transform: [{ scale: 0.97 }] }]}
@@ -71,6 +107,8 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
                       {rec?.completed ? `CLEARED x${rec.clears}` : `${level.rooms.length} ROOMS`}
                     </Text>
                   </>
+                ) : problem ? (
+                  <Text style={[styles.stat, { color: COLORS.spike }]}>NEEDS FIX · {problem}</Text>
                 ) : (
                   <Text style={styles.stat}>LOCKED · clear level {i}</Text>
                 )}
@@ -100,6 +138,8 @@ const styles = StyleSheet.create({
   reset: { color: '#3a4470', fontSize: 11 },
   headerRight: { alignItems: 'flex-end', gap: 8 },
   controls: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1, borderColor: '#24305a', backgroundColor: '#0d1224' },
+  devRow: { flexDirection: 'row', gap: 8 },
+  devNote: { color: COLORS.goal, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   controlsText: { color: COLORS.player, fontSize: 12, fontWeight: '800', letterSpacing: 1 },
   row: { flexDirection: 'row', gap: 14, flexWrap: 'wrap' },
   card: {

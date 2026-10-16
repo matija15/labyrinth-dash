@@ -30,15 +30,23 @@ export async function resetSave() {
 
 const EDITOR_KEY = '@labyrinth-dash/editor/v1';
 
-export async function loadEditorDraft(): Promise<LevelDef | null> {
+export interface EditorDraft {
+  level: LevelDef;
+  /** Id the level was opened from / saved to in the release pack (null for a new level). */
+  sourceId: string | null;
+}
+
+export async function loadEditorDraft(): Promise<EditorDraft | null> {
   try {
     const raw = await AsyncStorage.getItem(EDITOR_KEY);
-    return raw ? (JSON.parse(raw) as LevelDef) : null;
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data.rooms ? { level: data as LevelDef, sourceId: null } : (data as EditorDraft);
   } catch {
     return null;
   }
 }
 
-export function writeEditorDraft(level: LevelDef) {
-  return AsyncStorage.setItem(EDITOR_KEY, JSON.stringify(level)).catch(() => undefined);
+export function writeEditorDraft(draft: EditorDraft) {
+  return AsyncStorage.setItem(EDITOR_KEY, JSON.stringify(draft)).catch(() => undefined);
 }

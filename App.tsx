@@ -9,13 +9,14 @@ import { LevelSelect } from './src/components/LevelSelect';
 import { COLORS } from './src/components/renderer';
 import { emptySave } from './src/engine/save';
 import { loadSave, resetSave, writeSave } from './src/engine/storage';
-import { LEVELS } from './src/levels';
+import { DEV_TOOLS, packLevels, type LevelPack } from './src/levels';
 import type { LevelDef, SaveData } from './src/types';
 
 export default function App() {
   const [save, setSave] = useState<SaveData | null>(null);
   const [levelId, setLevelId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [pack, setPack] = useState<LevelPack>('release');
   const [playtest, setPlaytest] = useState<{ level: LevelDef; run: number } | null>(null);
 
   useEffect(() => {
@@ -27,8 +28,9 @@ export default function App() {
     writeSave(next);
   }, []);
 
-  const index = LEVELS.findIndex((l) => l.id === levelId);
-  const level = index >= 0 ? LEVELS[index] : null;
+  const levels = packLevels(pack);
+  const index = levels.findIndex((l) => l.id === levelId);
+  const level = index >= 0 ? levels[index] : null;
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -40,12 +42,12 @@ export default function App() {
               key={level.id}
               level={level}
               save={save}
-              hasNext={index < LEVELS.length - 1}
+              hasNext={index < levels.length - 1}
               onSave={onSave}
               onExit={() => setLevelId(null)}
-              onNext={() => setLevelId(LEVELS[index + 1].id)}
+              onNext={() => setLevelId(levels[index + 1].id)}
             />
-          ) : save && editing ? (
+          ) : save && editing && DEV_TOOLS ? (
             <>
               <LevelEditor
                 active={!playtest}
@@ -69,8 +71,11 @@ export default function App() {
             </>
           ) : save ? (
             <LevelSelect
-              levels={LEVELS}
+              levels={levels}
               save={save}
+              devTools={DEV_TOOLS}
+              pack={pack}
+              onPack={setPack}
               onPlay={setLevelId}
               onEditor={() => setEditing(true)}
               onControls={(controls) => onSave({ ...save, controls })}

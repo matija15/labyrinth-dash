@@ -4,9 +4,11 @@
  * --manual for the run-pad scheme. Usage: npx tsx scripts/solve.ts [levelId] [--manual]
  */
 import { Game } from '../src/engine/game';
-import { LEVELS } from '../src/levels';
+import { DEV_LEVELS } from '../src/levels/dev';
+import { RELEASE_LEVELS } from '../src/levels/release';
 import type { InputState, Vec2 } from '../src/types';
 
+const LEVELS = [...DEV_LEVELS, ...RELEASE_LEVELS];
 const FRAMES = 6;
 const MANUAL = process.argv.includes('--manual');
 /** Auto-run ignores the movement axis, so there is nothing to branch on. */

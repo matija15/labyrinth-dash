@@ -1,4 +1,4 @@
-import type { LevelDef } from '../types';
+import type { LevelDef } from '../../types';
 
 // Legend: # solid  ^v<> spikes  = crumble  K key  D door  O dash orb  J jump pad
 //         1-9 portal pair  S spawn/checkpoint  G goal  . empty

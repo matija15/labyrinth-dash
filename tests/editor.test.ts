@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LEVELS } from '../src/levels';
+import { DEV_LEVELS as LEVELS } from '../src/levels/dev';
 import { buildWorld, validateLevel } from '../src/engine/world';
 import { Game } from '../src/engine/game';
 import { createInput } from '../src/engine/input';
@@ -104,7 +104,7 @@ function readdirLevelFile(id: string) {
     'first-light': 'firstLight', 'dash-lab': 'dashLab', labyrinth: 'labyrinth',
     switchback: 'switchback', 'saw-mill': 'sawMill', undercroft: 'undercroft',
   };
-  return readFileSync(join(__dirname, '..', 'src', 'levels', `${names[id]}.ts`), 'utf8');
+  return readFileSync(join(__dirname, '..', 'src', 'levels', 'dev', `${names[id]}.ts`), 'utf8');
 }
 
 test('parseLevelCode reports bad input', () => {
