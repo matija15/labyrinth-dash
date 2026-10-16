@@ -16,7 +16,7 @@ fixed-timestep kinematic physics engine.
 
 ## Run it with Expo Go
 
-Requirements: Node 20+ and the **Expo Go** app (SDK 58) on your phone.
+Requirements: Node 20+ and the **Expo Go** app (SDK 57 — the version currently on the App Store / Play Store) on your phone.
 
 ```bash
 npm install

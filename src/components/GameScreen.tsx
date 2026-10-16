@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
 import { Canvas, Picture, useFont, type SkPicture } from '@shopify/react-native-skia';
-import { GestureDetector, GestureStateManager, useManualGesture } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
@@ -107,24 +107,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
     if (paused) touch.clear();
   }, [paused, result, touch]);
 
-  const gesture = useManualGesture({
-    runOnJS: true,
-    onTouchesDown: (e) => {
-      GestureStateManager.activate(e.handlerTag);
-      const now = performance.now();
-      for (const t of e.changedTouches) touch.down(t.id, t.x, t.y, now);
-    },
-    onTouchesMove: (e) => {
-      const now = performance.now();
-      for (const t of e.changedTouches) touch.move(t.id, t.x, t.y, now);
-    },
-    onTouchesUp: (e) => {
-      for (const t of e.changedTouches) touch.up(t.id);
-    },
-    onTouchesCancel: (e) => {
-      for (const t of e.changedTouches) touch.up(t.id);
-    },
-  });
+  const gesture = useMemo(() => createTouchGesture(touch), [touch]);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -196,6 +179,27 @@ function Button({ label, onPress, primary }: { label: string; onPress: () => voi
       <Text style={[styles.btnText, primary && { color: COLORS.bg }]}>{label}</Text>
     </Pressable>
   );
+}
+
+
+function createTouchGesture(touch: TouchController) {
+  return Gesture.Manual()
+    .runOnJS(true)
+    .onTouchesDown((e, manager) => {
+      manager.activate();
+      const now = performance.now();
+      for (const t of e.changedTouches) touch.down(t.id, t.x, t.y, now);
+    })
+    .onTouchesMove((e) => {
+      const now = performance.now();
+      for (const t of e.changedTouches) touch.move(t.id, t.x, t.y, now);
+    })
+    .onTouchesUp((e) => {
+      for (const t of e.changedTouches) touch.up(t.id);
+    })
+    .onTouchesCancelled((e) => {
+      for (const t of e.changedTouches) touch.up(t.id);
+    });
 }
 
 const styles = StyleSheet.create({
