@@ -6,7 +6,7 @@ import { PARTICLE_COLORS, type Game } from '../engine/game';
 import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
 import { T } from '../engine/world';
 import { formatTime } from '../engine/save';
-import { MOVE_ZONE, jumpButtons, type TouchController } from '../engine/input';
+import type { TouchController } from '../engine/input';
 
 export const COLORS = {
   bg: '#06070d',
@@ -335,55 +335,8 @@ function text(c: SkCanvas, s: string, x: number, y: number, font: SkFont, P: SkP
   c.drawText(s, x, y, P, font);
 }
 
-function drawJumpButtons(c: SkCanvas, f: FrameContext, P: Paints) {
-  const { width, height, touch } = f;
-  const held = touch.jumpButtonState();
-  jumpButtons(width, height, f.insets.left, f.insets.right).forEach((b, i) => {
-    c.drawCircle(b.x, b.y, b.r, held[i] ? P.pad1On : P.pad1);
-    c.drawCircle(b.x, b.y, b.r, P.padStroke);
-    const s = b.r * 0.32;
-    c.drawLine(b.x - s, b.y + s * 0.5, b.x, b.y - s * 0.5, P.padStroke);
-    c.drawLine(b.x, b.y - s * 0.5, b.x + s, b.y + s * 0.5, P.padStroke);
-  });
-}
-
-function drawPads(c: SkCanvas, f: FrameContext, P: Paints) {
-  const { width, height, touch } = f;
-  const padH = height * MOVE_ZONE;
-  const pads = touch.padState();
-  const padW = Math.min(width * 0.22, 180);
-  const left = Skia.RRectXY(Skia.XYWHRect(f.insets.left + 14, height - padH + 10, padW, padH - 24), 18, 18);
-  const right = Skia.RRectXY(Skia.XYWHRect(width - f.insets.right - 14 - padW, height - padH + 10, padW, padH - 24), 18, 18);
-  c.drawRRect(left, pads.left ? P.pad1On : P.pad1);
-  c.drawRRect(right, pads.right ? P.pad1On : P.pad1);
-  c.drawRRect(left, P.padStroke);
-  c.drawRRect(right, P.padStroke);
-  const chevron = (x: number, y: number, dir: number) => {
-    const s = 12;
-    c.drawLine(x + dir * s * 0.5, y - s, x - dir * s * 0.5, y, P.padStroke);
-    c.drawLine(x - dir * s * 0.5, y, x + dir * s * 0.5, y + s, P.padStroke);
-  };
-  chevron(left.rect.x + padW / 2, left.rect.y + left.rect.height / 2, 1);
-  chevron(right.rect.x + padW / 2, right.rect.y + right.rect.height / 2, -1);
-}
-
 function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
-  const { game, width, height, font, smallFont, touch } = f;
-  if (touch.autoRun) drawJumpButtons(c, f, P);
-  else drawPads(c, f, P);
-
-  // Swipe indicator
-  const sw = touch.lastSwipe;
-  if (sw) {
-    const age = (f.now - sw.t) / 260;
-    if (age < 1) {
-      P.swipe.setColor(hexWithAlpha(COLORS.player, 0.6 * (1 - age)));
-      const len = 40 + age * 30;
-      const n = Math.hypot(sw.dir.x, sw.dir.y) || 1;
-      c.drawLine(sw.x0, sw.y0, sw.x0 + (sw.dir.x / n) * len, sw.y0 + (sw.dir.y / n) * len, P.swipe);
-    }
-  }
-
+  const { game, width, height, font, smallFont } = f;
   if (!font || !smallFont) return;
   const x0 = f.insets.left + 16;
   const y0 = f.insets.top + 30;

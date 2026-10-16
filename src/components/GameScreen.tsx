@@ -92,8 +92,6 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext }: Pro
         if (s.width !== lastW || s.height !== lastH) {
           scale = game.setViewport(s.width, s.height);
           touch.resize(s.width, s.height);
-          touch.insetL = ins.left;
-          touch.insetR = ins.right;
           lastW = s.width;
           lastH = s.height;
         }

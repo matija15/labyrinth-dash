@@ -78,6 +78,8 @@ export interface InputState {
   dashQueue: Dir8 | null;
   /** Auto-run direction tap (-1 / 1, 0 = none), consumed by the engine. */
   faceQueue: number;
+  /** Auto-run touch tap on a screen half (-1 / 1, 0 = none); the engine decides start / flip / jump. */
+  tapQueue: number;
 }
 
 export type GameEvent =

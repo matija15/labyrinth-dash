@@ -79,7 +79,7 @@ function key(n: Node) {
 function solve(levelId: string, maxNodes = 8_000_000) {
   const level = LEVELS.find((l) => l.id === levelId)!;
   const root = new Game(level, { autoRun: !MANUAL });
-  root.step({ moveX: 0, jumpHeld: false, jumpPresses: 0, dashQueue: null, faceQueue: 0 });
+  root.step({ moveX: 0, jumpHeld: false, jumpPresses: 0, dashQueue: null, faceQueue: 0, tapQueue: 0 });
   let frontier: Node[] = [{ g: root, presses: 0, held: false, visited: 1, path: [] }];
   let best = 0;
   const seen = new Set<string>([key(frontier[0])]);
@@ -90,19 +90,17 @@ function solve(levelId: string, maxNodes = 8_000_000) {
   for (let depth = 0; frontier.length && expanded < maxNodes; depth++) {
     const next: Node[] = [];
     for (const n of frontier) {
-      const actions: { m: number; jump: 'none' | 'press' | 'hold'; dash: Vec2 | null; face?: number; label: string }[] = [];
+      const actions: { m: number; jump: 'none' | 'press' | 'hold' | 'tap'; dash: Vec2 | null; tap?: number; label: string }[] = [];
       const busy = n.g.phase === 'transition';
       if (busy) actions.push({ m: 0, jump: n.held ? 'hold' : 'none', dash: null, label: 'wait' });
       else for (const m of MOVES) {
         actions.push({ m, jump: 'none', dash: null, label: `m${m}` });
-        actions.push({ m, jump: 'press', dash: null, label: `m${m}J` });
+        if (MANUAL) actions.push({ m, jump: 'press', dash: null, label: `m${m}J` });
         if (n.held && n.g.player.vy < 0) actions.push({ m, jump: 'hold', dash: null, label: `m${m}H` });
       }
       if (!busy && n.g.player.dashes > 0) for (const d of DIRS) actions.push({ m: MANUAL ? d.x : 0, jump: 'none', dash: d, label: `D${d.x},${d.y}` });
       if (!MANUAL && !busy)
-        for (const face of [-1, 1])
-          if (face !== n.g.player.facing || !n.g.player.running)
-            actions.push({ m: 0, jump: n.held && n.g.player.vy < 0 ? 'hold' : 'none', dash: null, face, label: `F${face}` });
+        for (const tap of [-1, 1]) actions.push({ m: 0, jump: 'tap', dash: null, tap, label: `T${tap}` });
       if (!MANUAL && !busy && n.g.player.wallDir !== 0 && n.g.player.dashes === 0)
         actions.push({ m: 0, jump: 'none', dash: { x: 0, y: 1 }, label: 'drop' });
       for (const a of actions) {
@@ -114,7 +112,7 @@ function solve(levelId: string, maxNodes = 8_000_000) {
         let dead = false;
         let won = false;
         for (let f = 0; f < FRAMES && !dead && !won; f++) {
-          const input: InputState = { moveX: a.m, jumpHeld: held, jumpPresses: presses, dashQueue: f === 0 ? a.dash : null, faceQueue: f === 0 ? a.face ?? 0 : 0 };
+          const input: InputState = { moveX: a.m, jumpHeld: held, jumpPresses: presses, dashQueue: f === 0 ? a.dash : null, faceQueue: 0, tapQueue: f === 0 ? a.tap ?? 0 : 0 };
           g.step(input);
           for (const e of g.events) {
             if (e.type === 'death') dead = true;
