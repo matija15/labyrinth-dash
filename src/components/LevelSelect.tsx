@@ -10,9 +10,10 @@ interface Props {
   onPlay: (id: string) => void;
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
+  onEditor: () => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
   return (
@@ -33,6 +34,14 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls }: Props
             style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
           >
             <Text style={styles.controlsText}>CONTROLS · {controls === 'auto' ? 'AUTO-RUN' : 'RUN PADS'}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Level editor"
+            onPress={onEditor}
+            style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.controlsText}>LEVEL EDITOR</Text>
           </Pressable>
           <Pressable onLongPress={onReset} delayLongPress={1200}>
             <Text style={styles.reset}>hold to reset save</Text>

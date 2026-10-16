@@ -86,6 +86,9 @@ src/components/
   GameScreen.tsx           Skia <Canvas>, gesture overlay, RAF loop wiring, pause/clear overlays
   renderer.ts              imperative Skia drawing (cached static level picture + per-frame picture)
   LevelSelect.tsx          level cards with best times / deaths / lock state
+  LevelEditor.tsx          in-game level editor UI (palette, toolbar, export / load sheets)
+  editorController.ts      editor touch handling, camera, undo
+  editorRenderer.ts        Skia drawing of the editor grid
   useKeyboardControls.ts   web keyboard fallback
 src/engine/
   constants.ts             every physics/feel tuning value in one place
@@ -93,6 +96,7 @@ src/engine/
   world.ts                 level → tile grid, entities, room layout, validation
   input.ts                 touch zones / tap / swipe → InputState
   loop.ts                  requestAnimationFrame fixed-timestep (120 Hz) loop
+  editor.ts                pure editor ops: paint, rooms, saws, level code export / import
   tmx.ts                   Tiled .tmx (CSV layer + saw objects) → RoomDef
   save.ts / storage.ts     pure save reducers + AsyncStorage I/O
 src/levels/                built-in levels (2D tile-string arrays)
@@ -130,6 +134,28 @@ saws: [
   { kind: 'orbit', center: [16, 8], radius: 0.7, orbitRadius: 3, speed: 1.6, phase: 0 },
 ]
 ```
+
+### In-game level editor
+
+Tap **LEVEL EDITOR** on the level select screen.
+
+- **Palette (left):** Wall, Spikes (they point away from the wall they touch), Saw, Dash Orb, Key, Door,
+  Spawn, Exit Flag, Crumble, Jump Pad, Eraser, + Room, − Room and Pan. Tap or drag on the grid to paint.
+- **Saws:** drag to make a saw that moves back and forth along that line. Tap to make a saw that circles
+  the tile. The eraser removes a saw when you erase its start, end or center tile.
+- **Rooms:** the grid uses the game's 8 px tiles, and zoom 1× shows 16 tiles of height, the same as in
+  the game. Painting outside every room adds a walled 32×16 room there, and you erase wall tiles to connect
+  rooms. Every room needs a Spawn (its checkpoint), and the level needs exactly one Exit Flag.
+- **Camera:** scroll with two fingers or the Pan tool, and zoom with − / +. On web, the arrow keys and the
+  mouse wheel scroll too.
+- **Undo:** reverts the last stroke (Ctrl+Z on web). Your work is saved automatically as a draft.
+- **▶ Playtest:** plays the level from the first room's spawn. Pause (or Esc) and dying both return you
+  to the editor. Playtests don't touch your save data.
+- **Export:** shows the level as a complete `src/levels/*.ts` file, in the same format as the built-in levels.
+  *Copy to Clipboard* copies the file and *Copy as JSON* copies plain JSON. Save it as a new file in
+  `src/levels/` and add it to `LEVELS` in `src/levels/index.ts`.
+- **Load:** opens a new blank level or any built-in level, or loads pasted code (the JSON, or a whole
+  level `.ts` file).
 
 ### Tiled (.tmx)
 
