@@ -76,6 +76,8 @@ export interface InputState {
   jumpPresses: number;
   /** Queued dash direction (unit-ish 8-way vector), consumed by the engine. */
   dashQueue: Dir8 | null;
+  /** Auto-run direction tap (-1 / 1, 0 = none), consumed by the engine. */
+  faceQueue: number;
 }
 
 export type GameEvent =
