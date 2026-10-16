@@ -68,6 +68,12 @@ A swipe that starts as a jump tap turns into a dash once it travels about 30 px 
 2. **Dash Lab**: dashing gaps, refill-orb chains, a jump pad, key → door, portals.
 3. **The Labyrinth**: six interconnected rooms with a sawblade gauntlet (moving and orbiting saws), a key room,
    a locked vault, a collapsing floor, and a portal loop back to the hub.
+4. **Switchback**: stacked switchback ledges (turn around at each wall), a tall wall-jump chimney with a crumbling
+   section, and a spike gap you clear with a jump + dash.
+5. **Saw Mill**: a floor of rising and falling saws to time, an orb chain over a long spike pit, and a spring jump
+   past an orbiting saw.
+6. **Undercroft**: a locked gate with the key in the cellar below, a crumbling bridge, a shaft climb to a portal
+   back up to the gate, then crumbling pillars under a sweeping saw.
 
 Each level unlocks after you clear the previous one. Long-press "hold to reset save" on the level select screen to wipe your progress.
 
