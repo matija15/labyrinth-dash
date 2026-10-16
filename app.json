@@ -22,6 +22,9 @@
       "favicon": "./assets/favicon.png",
       "backgroundColor": "#06070d"
     },
-    "backgroundColor": "#06070d"
+    "backgroundColor": "#06070d",
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }
