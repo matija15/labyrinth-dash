@@ -222,7 +222,7 @@ Tap **LEVEL EDITOR** on the level select screen (dev builds only).
   rooms. Every room needs a Spawn (its checkpoint), and the level needs exactly one Exit Flag.
 - **Camera:** scroll with two fingers or the Pan tool (arrow keys on web). Zoom with the − / + buttons; the
   middle button shows the zoom and resets it to 100% (3/4 of a room's height). On web the mouse wheel zooms in
-  and out around the cursor.
+  and out around the cursor, and holding the wheel (middle button) and dragging moves the map, like Blender.
 - **Undo:** reverts the last stroke (Ctrl+Z on web). Your work is saved automatically as a draft.
 - **▶ Start / ▶ Here / ▶ Room:** ▶ Start plays the level from the first room's spawn. ▶ Here starts in the room
   in the middle of the screen and carries on through the rest of the level. ▶ Room (or **T**) plays only the

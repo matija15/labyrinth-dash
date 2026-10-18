@@ -215,17 +215,60 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     const factor = Math.min(ZOOM_STEP, Math.max(1 / ZOOM_STEP, Math.exp(-px * 0.002)));
     zoomTo(zoom * factor, { x: e.clientX - r.left, y: e.clientY - r.top });
   });
+  // Middle mouse button (pressed scroll wheel) drags the map, like Blender.
+  const onMiddleDown = useEffectEvent((e: PointerEvent) =>
+    e.button === 1 && !modal && !!(e.target as Element | null)?.closest?.('#editor-canvas'));
   useEffect(() => {
     if (!active || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    let drag: { id: number; x: number; y: number } | null = null;
     const key = (e: KeyboardEvent) => onKey(e);
     const wheel = (e: WheelEvent) => onWheel(e);
+    // Capture phase + stopPropagation keeps the middle-button drag away from the paint gesture.
+    const down = (e: PointerEvent) => {
+      if (!onMiddleDown(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      ctl.middlePan = true;
+      document.body.style.cursor = 'grabbing';
+    };
+    const move = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      e.stopPropagation();
+      ctl.dragBy(e.clientX - drag.x, e.clientY - drag.y);
+      drag = { id: drag.id, x: e.clientX, y: e.clientY };
+    };
+    const up = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id || e.button !== 1) return;
+      e.stopPropagation();
+      drag = null;
+      setTimeout(() => { ctl.middlePan = false; }, 0);
+      document.body.style.cursor = '';
+    };
+    // Stops Chrome's middle-click autoscroll and Linux middle-click paste on the canvas.
+    const noDefault = (e: MouseEvent) => {
+      if (e.button === 1 && (e.target as Element | null)?.closest?.('#editor-canvas')) e.preventDefault();
+    };
+    const opts = { capture: true };
     window.addEventListener('keydown', key);
     window.addEventListener('wheel', wheel, { passive: false });
+    window.addEventListener('pointerdown', down, opts);
+    window.addEventListener('pointermove', move, opts);
+    window.addEventListener('pointerup', up, opts);
+    window.addEventListener('mousedown', noDefault, opts);
+    window.addEventListener('auxclick', noDefault, opts);
     return () => {
       window.removeEventListener('keydown', key);
       window.removeEventListener('wheel', wheel);
+      window.removeEventListener('pointerdown', down, opts);
+      window.removeEventListener('pointermove', move, opts);
+      window.removeEventListener('pointerup', up, opts);
+      window.removeEventListener('mousedown', noDefault, opts);
+      window.removeEventListener('auxclick', noDefault, opts);
+      ctl.middlePan = false;
+      document.body.style.cursor = '';
     };
-  }, [active]);
+  }, [active, ctl]);
 
   const open = (next: LevelDef, id: string | null) => {
     ctl.load(next);
@@ -242,7 +285,7 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   };
 
   const { level, message } = snap;
-  const hint = message ?? HINTS[tool] ?? (Platform.OS === 'web' ? 'Drag to paint · wheel zooms · T tests this room' : 'Drag to paint · two fingers to scroll');
+  const hint = message ?? HINTS[tool] ?? (Platform.OS === 'web' ? 'Drag to paint · wheel zooms · hold wheel to move · T tests this room' : 'Drag to paint · two fingers to scroll');
 
   return (
     <View style={styles.root} onLayout={onLayout}>
