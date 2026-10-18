@@ -65,7 +65,12 @@ export const spawnPos = (tx: number, ty: number): Vec2 => ({
   y: (ty + 1) * TILE - PLAYER_H,
 });
 
-export function validateLevel(level: LevelDef): string[] {
+export interface ValidateOptions {
+  /** Editor room practice: a level without an exit flag is allowed (it just can't be cleared). */
+  allowNoGoal?: boolean;
+}
+
+export function validateLevel(level: LevelDef, opts: ValidateOptions = {}): string[] {
   const errors: string[] = [];
   const portalCounts = new Map<string, number>();
   let goals = 0;
@@ -83,7 +88,7 @@ export function validateLevel(level: LevelDef): string[] {
   portalCounts.forEach((n, ch) => {
     if (n !== 2) errors.push(`${level.id}: portal ${ch} appears ${n} times (needs exactly 2)`);
   });
-  if (goals !== 1) errors.push(`${level.id}: expected exactly one goal, found ${goals}`);
+  if (goals > 1 || (goals === 0 && !opts.allowNoGoal)) errors.push(`${level.id}: expected exactly one goal, found ${goals}`);
   const rects = level.rooms.map((r) => ({ id: r.id, x: r.x, y: r.y, w: r.tiles[0]?.length ?? 0, h: r.tiles.length }));
   for (let i = 0; i < rects.length; i++)
     for (let j = i + 1; j < rects.length; j++) {
@@ -95,8 +100,8 @@ export function validateLevel(level: LevelDef): string[] {
   return errors;
 }
 
-export function buildWorld(level: LevelDef): World {
-  const errors = validateLevel(level);
+export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
+  const errors = validateLevel(level, opts);
   if (errors.length) throw new Error(`Invalid level:\n${errors.join('\n')}`);
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;

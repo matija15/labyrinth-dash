@@ -1,48 +1,30 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import type { TouchController } from '../engine/input';
+import { DASH_CHORD_MS, KeyboardInput } from '../engine/keyboard';
 
-/**
- * Keyboard controls for Expo web / emulators with a hardware keyboard:
- * ←/→ or A/D move (auto-run: press to set the run direction), Z/Space/C jump (hold for height), X/Shift dash toward held
- * arrows (8-way; X + ↓ on a wall is a wall drop in auto-run), Esc/P pause.
- */
+/** Desktop keyboard controls for Expo web (see KeyboardInput for the mapping). */
 export function useKeyboardControls(touch: TouchController, togglePause: () => void) {
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const held = new Set<string>();
-    const axis = () => {
-      const x = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
-      const y = (held.has('down') ? 1 : 0) - (held.has('up') ? 1 : 0);
-      return { x, y };
-    };
-    const dirOf = (k: string) =>
-      ({ arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right', arrowup: 'up', w: 'up', arrowdown: 'down', s: 'down' })[k];
+    const kb = new KeyboardInput(touch, togglePause);
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const down = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      const dir = dirOf(k);
-      if (dir) held.add(dir);
-      if ((dir === 'left' || dir === 'right') && !e.repeat) touch.keyFace(dir === 'left' ? -1 : 1);
-      if (k === 'z' || k === ' ' || k === 'c') touch.keyJumpDown();
-      if ((k === 'x' || k === 'shift') && !e.repeat) touch.keyDash(axis());
-      if (k === 'escape' || k === 'p') togglePause();
-      touch.keyboardX = axis().x;
-      touch.sync();
-      if (dir || k === ' ') e.preventDefault();
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const wasPending = kb.dashPending;
+      if (kb.keyDown(e.key, e.repeat)) e.preventDefault();
+      if (kb.dashPending && !wasPending) timer = setTimeout(() => kb.flushDash(), DASH_CHORD_MS);
     };
-    const up = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      const dir = dirOf(k);
-      if (dir) held.delete(dir);
-      if (k === 'z' || k === ' ' || k === 'c') touch.keyJumpUp();
-      touch.keyboardX = axis().x;
-      touch.sync();
-    };
+    const up = (e: KeyboardEvent) => kb.keyUp(e.key);
+    const blur = () => kb.reset();
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', blur);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
     };
   }, [touch, togglePause]);
 }

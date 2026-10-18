@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import { Canvas, Picture, useFont } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { TILE, VIEW_TILES_H } from '../engine/constants';
 import {
-  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, startingFrom, type EditorTool,
+  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, roomIssues, roomOnly, startingFrom,
+  TOOL_SHORTCUTS, toolForKey, type EditorTool,
 } from '../engine/editor';
 import { deletePackLevel, fetchPack, reorderPack, savePackLevel } from '../engine/levelServer';
 import { loadEditorDraft, writeEditorDraft } from '../engine/storage';
@@ -58,8 +59,12 @@ const HINTS: Partial<Record<EditorTool, string>> = {
 /** Tools that Fill can paint across a selection. */
 const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', 'erase']);
 
-const ZOOMS = [0.5, 0.75, 1, 1.5, 2];
-const PALETTE_W = 92;
+/** Zoom is relative to the default view (100% shows 3/4 of a room's height). */
+const BASE_ZOOM = 0.75;
+const ZOOM_MIN = 0.33;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 1.25;
+const PALETTE_W = 126;
 export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 11);
@@ -68,13 +73,14 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   const [tool, setTool] = useState<EditorTool>('#');
   const [fillTool, setFillTool] = useState<EditorTool>('#');
   const [sourceId, setSourceId] = useState<string | null>(null);
-  const [zoomIndex, setZoomIndex] = useState(1);
+  const [zoom, setZoom] = useState(1);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [modal, setModal] = useState<'export' | 'levels' | 'save' | null>(null);
   const [draftLoaded, setDraftLoaded] = useState(false);
 
-  const scale = (ZOOMS[zoomIndex] * (size.height || 1)) / (VIEW_TILES_H * TILE);
+  const baseScale = (BASE_ZOOM * (size.height || 1)) / (VIEW_TILES_H * TILE);
+  const scale = zoom * baseScale;
   const focusLeft = PALETTE_W + insets.left + 8;
 
   useEffect(() => ctl.subscribe(setSnap), [ctl]);
@@ -129,46 +135,16 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
 
   const gesture = useMemo(() => createEditorGesture(ctl), [ctl]);
 
-  // Web: arrow keys / wheel scroll, Ctrl+Z undo.
-  useEffect(() => {
-    if (!active || Platform.OS !== 'web' || typeof window === 'undefined') return;
-    const key = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement | null)?.tagName;
-      if (tag === 'TEXTAREA' || tag === 'INPUT') return;
-      const step = 8 * TILE;
-      const d = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, number[]>)[e.key];
-      if (d) {
-        ctl.panBy(d[0], d[1]);
-        e.preventDefault();
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        ctl.undo();
-        e.preventDefault();
-      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'c' || e.key.toLowerCase() === 'x')) {
-        ctl.selectionOp(e.key.toLowerCase() === 'c' ? 'copy' : 'cut');
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
-        setTool('paste');
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        ctl.selectionOp('clear');
-      } else if (e.key === 'Escape') {
-        ctl.selectionOp('deselect');
-      }
-    };
-    const wheel = (e: WheelEvent) => {
-      ctl.panBy((e.shiftKey ? e.deltaY : e.deltaX) / scale, (e.shiftKey ? 0 : e.deltaY) / scale);
-    };
-    window.addEventListener('keydown', key);
-    window.addEventListener('wheel', wheel);
-    return () => {
-      window.removeEventListener('keydown', key);
-      window.removeEventListener('wheel', wheel);
-    };
-  }, [active, ctl, scale]);
+  const pickTool = (t: EditorTool) => {
+    setTool(t);
+    if (FILL_TOOLS.has(t)) setFillTool(t);
+  };
 
-  const zoom = (dir: number) => {
-    const next = Math.min(ZOOMS.length - 1, Math.max(0, zoomIndex + dir));
-    if (next === zoomIndex) return;
-    ctl.rescale((ZOOMS[next] * size.height) / (VIEW_TILES_H * TILE));
-    setZoomIndex(next);
+  const zoomTo = (next: number, at?: { x: number; y: number }) => {
+    const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+    if (Math.abs(z - zoom) < 1e-6) return;
+    ctl.rescale(z * baseScale, at);
+    setZoom(z);
   };
 
   /** From the level's first room, or (`here`) from the room in the middle of the screen. */
@@ -182,10 +158,74 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     onPlaytest(here ? startingFrom(snap.level, ctl.centerRoomIndex(focusLeft)) : cloneLevel(snap.level));
   };
 
-  const pickTool = (t: EditorTool) => {
-    setTool(t);
-    if (FILL_TOOLS.has(t)) setFillTool(t);
+  /** Only the room in the middle of the screen; a room without a spawn starts on its floor near the center. */
+  const playtestRoom = () => {
+    if (!snap.level.rooms.length) return;
+    const practice = roomOnly(snap.level, ctl.centerRoomIndex(focusLeft));
+    const issues = roomIssues(practice);
+    if (issues.length) {
+      ctl.setMessage(`Can’t playtest this room: ${issues[0]}`);
+      return;
+    }
+    ctl.setMessage(null);
+    onPlaytest(practice);
   };
+
+  // Web: tool hotkeys, T room playtest, arrow keys scroll, Ctrl+Z undo, wheel zooms at the cursor.
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    const tag = (e.target as HTMLElement | null)?.tagName;
+    if (tag === 'TEXTAREA' || tag === 'INPUT' || modal) return;
+    const k = e.key.toLowerCase();
+    const mod = e.ctrlKey || e.metaKey;
+    const step = 8 * TILE;
+    const d = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, number[]>)[e.key];
+    if (d) {
+      ctl.panBy(d[0], d[1]);
+      e.preventDefault();
+    } else if (mod && k === 'z') {
+      ctl.undo();
+      e.preventDefault();
+    } else if (mod && (k === 'c' || k === 'x')) {
+      ctl.selectionOp(k === 'c' ? 'copy' : 'cut');
+    } else if (mod && k === 'v') {
+      setTool('paste');
+    } else if (mod || e.altKey || e.repeat) {
+      return;
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      ctl.selectionOp('clear');
+    } else if (e.key === 'Escape') {
+      ctl.selectionOp('deselect');
+    } else if (k === 't') {
+      playtestRoom();
+    } else if (k === '+' || k === '=') {
+      zoomTo(zoom * ZOOM_STEP);
+    } else if (k === '-' || k === '_') {
+      zoomTo(zoom / ZOOM_STEP);
+    } else {
+      const t = toolForKey(e.key);
+      if (t) pickTool(t);
+    }
+  });
+  const onWheel = useEffectEvent((e: WheelEvent) => {
+    const canvas = (e.target as Element | null)?.closest?.('#editor-canvas');
+    if (!canvas || modal) return;
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? r.height : 1);
+    const factor = Math.min(ZOOM_STEP, Math.max(1 / ZOOM_STEP, Math.exp(-px * 0.002)));
+    zoomTo(zoom * factor, { x: e.clientX - r.left, y: e.clientY - r.top });
+  });
+  useEffect(() => {
+    if (!active || Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const key = (e: KeyboardEvent) => onKey(e);
+    const wheel = (e: WheelEvent) => onWheel(e);
+    window.addEventListener('keydown', key);
+    window.addEventListener('wheel', wheel, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', key);
+      window.removeEventListener('wheel', wheel);
+    };
+  }, [active]);
 
   const open = (next: LevelDef, id: string | null) => {
     ctl.load(next);
@@ -202,42 +242,50 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   };
 
   const { level, message } = snap;
-  const hint = message ?? HINTS[tool] ?? 'Drag to paint · two fingers to scroll';
+  const hint = message ?? HINTS[tool] ?? (Platform.OS === 'web' ? 'Drag to paint · wheel zooms · T tests this room' : 'Drag to paint · two fingers to scroll');
 
   return (
     <View style={styles.root} onLayout={onLayout}>
       <GestureDetector gesture={gesture}>
-        <View style={StyleSheet.absoluteFill} collapsable={false}>
+        <View nativeID="editor-canvas" style={StyleSheet.absoluteFill} collapsable={false}>
           <Canvas style={StyleSheet.absoluteFill}>{picture && <Picture picture={picture} />}</Canvas>
         </View>
       </GestureDetector>
 
       <View style={[styles.palette, { top: insets.top + 8, left: insets.left + 8, bottom: 8 }]}>
         <ScrollView contentContainerStyle={{ gap: 4, paddingBottom: 4 }} showsVerticalScrollIndicator={false}>
-          {TOOLS.map((t) => (
-            <Pressable
-              key={t.tool}
-              accessibilityRole="button"
-              accessibilityLabel={`Tool ${t.label}`}
-              accessibilityState={{ selected: tool === t.tool }}
-              onPress={() => pickTool(t.tool)}
-              style={[styles.tool, tool === t.tool && styles.toolOn]}
-            >
-              <View style={[styles.swatch, { backgroundColor: t.color }, t.tool === 'erase' && styles.swatchHollow]} />
-              <Text style={[styles.toolText, tool === t.tool && { color: COLORS.bg }]} numberOfLines={1}>{t.label}</Text>
-            </Pressable>
-          ))}
+          {TOOLS.map((t) => {
+            const [key, digit] = TOOL_SHORTCUTS[t.tool] ?? [];
+            return (
+              <Pressable
+                key={t.tool}
+                accessibilityRole="button"
+                accessibilityLabel={`Tool ${t.label}${key ? ` (${key}${digit ? ` or ${digit}` : ''})` : ''}`}
+                accessibilityState={{ selected: tool === t.tool }}
+                onPress={() => pickTool(t.tool)}
+                style={[styles.tool, tool === t.tool && styles.toolOn]}
+              >
+                <View style={[styles.swatch, { backgroundColor: t.color }, t.tool === 'erase' && styles.swatchHollow]} />
+                <Text style={[styles.toolText, tool === t.tool && { color: COLORS.bg }]} numberOfLines={1}>
+                  {t.label}
+                  {key && <Text style={[styles.toolKey, tool === t.tool && { color: COLORS.bg }]}> [{key}]</Text>}
+                </Text>
+              </Pressable>
+            );
+          })}
         </ScrollView>
       </View>
 
-      <View style={[styles.topBar, { top: insets.top + 8, right: insets.right + 8 }]}>
+      <View style={[styles.topBar, { top: insets.top + 8, right: insets.right + 8, left: insets.left + PALETTE_W + 16 }]}>
         <BarButton label="Undo" onPress={() => ctl.undo()} disabled={!snap.undoCount} />
         <BarButton label={grid ? 'Grid ✓' : 'Grid'} onPress={() => setGrid((g) => !g)} />
-        <BarButton label="−" onPress={() => zoom(-1)} disabled={zoomIndex === 0} />
-        <BarButton label="+" onPress={() => zoom(1)} disabled={zoomIndex === ZOOMS.length - 1} />
+        <BarButton label="−" a11y="Zoom out" onPress={() => zoomTo(zoom / ZOOM_STEP)} disabled={zoom <= ZOOM_MIN + 1e-6} />
+        <BarButton label={`${Math.round(zoom * 100)}% ⟲`} a11y="Reset zoom" onPress={() => zoomTo(1)} />
+        <BarButton label="+" a11y="Zoom in" onPress={() => zoomTo(zoom * ZOOM_STEP)} disabled={zoom >= ZOOM_MAX - 1e-6} />
         <BarButton label="Levels" onPress={() => setModal('levels')} />
         <BarButton label="Save" onPress={() => setModal('save')} />
         <BarButton label="Export" onPress={() => setModal('export')} />
+        <BarButton label="▶ Room [T]" a11y="Playtest current room" onPress={playtestRoom} primary />
         <BarButton label="▶ Here" onPress={() => playtest(true)} primary />
         <BarButton label="▶ Start" onPress={() => playtest(false)} primary />
         <BarButton label="Exit" onPress={onExit} />
@@ -307,11 +355,13 @@ function createEditorGesture(ctl: EditorController) {
     });
 }
 
-function BarButton({ label, onPress, primary, disabled }: { label: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
+function BarButton({
+  label, a11y, onPress, primary, disabled,
+}: { label: string; a11y?: string; onPress: () => void; primary?: boolean; disabled?: boolean }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={a11y ?? label}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.bar, primary && styles.btnPrimary, (pressed || disabled) && { opacity: disabled ? 0.35 : 0.7 }]}
@@ -559,7 +609,8 @@ const styles = StyleSheet.create({
   swatch: { width: 12, height: 12, borderRadius: 3 },
   swatchHollow: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: COLORS.dim },
   toolText: { color: COLORS.text, fontSize: 11, fontWeight: '700', flexShrink: 1 },
-  topBar: { position: 'absolute', flexDirection: 'row', gap: 6 },
+  toolKey: { color: COLORS.dim, fontWeight: '800' },
+  topBar: { position: 'absolute', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 6 },
   bar: {
     paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: '#2f3d6e',
     backgroundColor: 'rgba(13,18,36,0.92)',

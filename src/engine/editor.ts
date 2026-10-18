@@ -340,6 +340,62 @@ export function startingFrom(level: LevelDef, roomIndex: number): LevelDef {
   return copy;
 }
 
+const FLOOR = new Set(['#', '=', 'D']);
+const isEmpty = (ch: string | undefined) => ch === '.' || ch === ' ';
+
+/**
+ * Where a temporary spawn goes in a room without one: an empty tile standing on a floor, as close as possible to the
+ * room's bottom center (columns nearest the middle first, then the lowest floor in that column).
+ */
+export function practiceSpawn(room: RoomDef): [number, number] {
+  const h = room.tiles.length;
+  const w = room.tiles[0]?.length ?? 0;
+  const mid = Math.floor(w / 2);
+  for (let d = 0; d < w; d++)
+    for (const x of d === 0 ? [mid] : [mid - d, mid + d]) {
+      if (x < 0 || x >= w) continue;
+      for (let y = h - 2; y >= 0; y--)
+        if (isEmpty(room.tiles[y][x]) && FLOOR.has(room.tiles[y + 1][x])) return [x, y];
+    }
+  return [mid, Math.max(0, h - 2)];
+}
+
+/**
+ * Room practice: a copy of the level containing only room `roomIndex`. Unpaired portals are removed, and a room
+ * without a spawn gets a temporary one on its floor (bottom center). The exit flag is optional (see `allowNoGoal`).
+ */
+export function roomOnly(level: LevelDef, roomIndex: number): LevelDef {
+  const copy = cloneLevel(level);
+  const room = copy.rooms[roomIndex];
+  copy.rooms = [room];
+  const counts = new Map<string, number>();
+  for (const row of room.tiles) for (const ch of row) if (ch >= '1' && ch <= '9') counts.set(ch, (counts.get(ch) ?? 0) + 1);
+  room.tiles = room.tiles.map((row) => row.replace(/[1-9]/g, (ch) => (counts.get(ch) === 2 ? ch : '.')));
+  if (!room.tiles.some((row) => row.includes('S'))) {
+    const [x, y] = practiceSpawn(room);
+    setChar(room, x, y, 'S');
+  }
+  return copy;
+}
+
+/** Problems that stop a room practice playtest (none for any well-formed room). */
+export const roomIssues = (practice: LevelDef): string[] =>
+  validateLevel(practice, { allowNoGoal: true }).map((e) => e.replace(`${practice.id}: `, '').replace(`${practice.id}/`, ''));
+
+/** Editor hotkeys: tool → [letter, number-row digit]. */
+export const TOOL_SHORTCUTS: Partial<Record<EditorTool, [string, string?]>> = {
+  '#': ['W', '1'], '^': ['X', '2'], saw: ['A', '3'], O: ['O', '4'], K: ['K', '5'], D: ['D', '6'], S: ['S', '7'],
+  G: ['F', '8'], '=': ['C', '9'], J: ['J', '0'], erase: ['E'], select: ['V'], paste: ['P'], 'room+': ['R'],
+};
+
+/** The tool a bare key press selects (case-insensitive), if any. */
+export function toolForKey(key: string): EditorTool | null {
+  const k = key.toUpperCase();
+  for (const [tool, [letter, digit]] of Object.entries(TOOL_SHORTCUTS) as [EditorTool, [string, string?]][])
+    if (k === letter || k === digit) return tool;
+  return null;
+}
+
 // ------------------------------------------------------------------ export / import
 
 export const slugify = (name: string) =>

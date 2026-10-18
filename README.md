@@ -39,24 +39,28 @@ There are two control schemes. Toggle them with **CONTROLS** on the level select
 
 | Situation | Touch | Keyboard (web) |
 | --- | --- | --- |
-| Standing still | Tap the left / right half: start running that way (never jumps) | ← / → |
-| Running on the ground | Tap the half you're running toward: jump (hold for a higher jump) | Z / Space / C |
+| Standing still | Tap the left / right half: start running that way (never jumps) | ← / → (or A for left) |
+| Running on the ground | Tap the half you're running toward: jump (hold for a higher jump) | Space / ↑ / Z |
 | Running on the ground | Tap the other half: turn around instantly (never jumps) | ← / → |
-| In the air | Tap the half you're moving toward: buffered jump (coyote time / landing); the other half turns you around | Z / Space / C |
-| On a wall | Tap anywhere, even the same half again and again: wall-jump up and away, flipping your run direction (shaft climbing) | Z / Space / C |
-| Anywhere | Swipe: 8-way dash in the swipe direction | X / Shift + arrows |
-| On a wall | Swipe straight down: let go and fall straight down (no dash used); you turn away from the wall on landing | X / Shift + ↓ |
+| In the air | Tap the half you're moving toward: buffered jump (coyote time / landing); the other half turns you around | Space / ↑ / Z |
+| On a wall | Tap anywhere, even the same half again and again: wall-jump up and away, flipping your run direction (shaft climbing) | Space / ↑ / Z |
+| Anywhere | Swipe: 8-way dash in the swipe direction | D + arrows (no arrow: facing way); X / Shift too |
+| On a wall | Swipe straight down: let go and fall straight down (no dash used); you turn away from the wall on landing | D + ↓ |
 | Pause | ❚❚ button | Esc / P |
 
 Touching a wall in the air grabs it automatically (slow slide). Running into a wall on the ground stops you against it: tap the other half to turn around, or jump to grab the wall and wall-jump off it. A hold only extends a tap that became a jump; holding a start / turn-around tap does nothing.
+
+**PC keyboard dash:** hold the arrow(s) and press **D**, or press **D** and then the arrow(s) within 60 ms (so
+D, ↑, → still gives an up-right diagonal). While D is down the arrows only aim: ↑ doesn't jump and ←/→ don't turn
+you. D with no arrow dashes the way you're facing. D is dash only, so it never runs right.
 
 **Run pads (classic)**
 
 | Action | Touch | Keyboard (web) |
 | --- | --- | --- |
-| Run left / right | Hold the bottom-left / bottom-right of the screen | ← → / A D |
-| Jump | Tap anywhere above the run pads (hold for a higher jump) | Z / Space / C |
-| Dash (8-way) | Swipe in any direction (with a finger that isn't on a run pad) | X / Shift + arrows |
+| Run left / right | Hold the bottom-left / bottom-right of the screen | ← → (or A for left) |
+| Jump | Tap anywhere above the run pads (hold for a higher jump) | Space / ↑ / Z |
+| Dash (8-way) | Swipe in any direction (with a finger that isn't on a run pad) | D + arrows; X / Shift too |
 | Wall slide / wall jump | Push into a wall while airborne, then jump | same |
 | Pause | ❚❚ button | Esc / P |
 
@@ -170,6 +174,10 @@ Tap **LEVEL EDITOR** on the level select screen (dev builds only).
 - **Palette (left):** Wall, Spikes (they point away from the wall they touch), Saw, Dash Orb, Key, Door,
   Spawn, Exit Flag, Crumble, Jump Pad, Eraser, Select, Paste, + Room, − Room and Pan. Tap or drag on the grid
   to paint.
+- **Tool hotkeys (web):** shown in the palette as `[W]` etc. 1/W Wall, 2/X Spikes, 3/A Saw, 4/O Dash Orb,
+  5/K Key, 6/D Door, 7/S Spawn, 8/F Exit Flag, 9/C Crumble, 0/J Jump Pad, E Eraser, V Select, P Paste,
+  R + Room, T playtest this room, + / − zoom. They only fire without Ctrl/Cmd, so Ctrl+C / X / V still copy,
+  cut and paste.
 - **Select / copy / paste:** with **Select**, drag a box, then **Copy**, **Cut**, **Fill** (paints the last
   tile tool you picked over the whole box), **Clear** or **✕**. Then pick **Paste** and tap or drag to place
   the block by its top-left corner. Saws inside the box are copied too, and pasting outside every room adds rooms.
@@ -179,11 +187,15 @@ Tap **LEVEL EDITOR** on the level select screen (dev builds only).
 - **Rooms:** the grid uses the game's 8 px tiles, and zoom 1× shows 16 tiles of height, the same as in
   the game. Painting outside every room adds a walled 32×16 room there, and you erase wall tiles to connect
   rooms. Every room needs a Spawn (its checkpoint), and the level needs exactly one Exit Flag.
-- **Camera:** scroll with two fingers or the Pan tool, and zoom with − / +. On web, the arrow keys and the
-  mouse wheel scroll too.
+- **Camera:** scroll with two fingers or the Pan tool (arrow keys on web). Zoom with the − / + buttons; the
+  middle button shows the zoom and resets it to 100% (3/4 of a room's height). On web the mouse wheel zooms in
+  and out around the cursor.
 - **Undo:** reverts the last stroke (Ctrl+Z on web). Your work is saved automatically as a draft.
-- **▶ Start / ▶ Here:** ▶ Start plays the level from the first room's spawn. ▶ Here starts in the room in
-  the middle of the screen, so you can practise the last screen of a long level without replaying the rest.
+- **▶ Start / ▶ Here / ▶ Room:** ▶ Start plays the level from the first room's spawn. ▶ Here starts in the room
+  in the middle of the screen and carries on through the rest of the level. ▶ Room (or **T**) plays only the
+  room in the middle of the screen: other rooms are left out, so you can't leave it, and portals whose partner is
+  in another room are removed. If that room has no Spawn you start on its floor near the bottom center, and it
+  doesn't need an Exit Flag.
   Pause (or Esc) and dying both return you to the editor. Playtests don't touch your save data.
 - **Export:** shows the level as a complete `.ts` level file (the demo-level format). *Copy as JSON* copies
   plain JSON, the same format as the release `.json` files. Use this to move a level by hand when the level
