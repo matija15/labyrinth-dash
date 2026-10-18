@@ -41,7 +41,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 20);
   const smallFont = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 12);
   const autoRun = (save.controls ?? 'auto') === 'auto';
-  const game = useMemo(() => new Game(level, { autoRun }), [level, autoRun]);
+  const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest }), [level, autoRun, playtest]);
   const staticPic = useMemo(() => buildStaticPicture(game), [game]);
   const touch = useMemo(() => {
     const t = new TouchController();

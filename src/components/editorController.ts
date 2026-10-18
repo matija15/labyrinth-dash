@@ -165,12 +165,14 @@ export class EditorController {
     this.emit();
   }
 
-  /** Changes zoom keeping the screen center fixed. */
-  rescale(nextScale: number) {
-    const cx = this.cam.x + this.width / 2 / this.scale;
-    const cy = this.cam.y + this.height / 2 / this.scale;
+  /** Changes zoom keeping the world point under screen point `at` (default: the screen center) fixed. */
+  rescale(nextScale: number, at?: { x: number; y: number }) {
+    const ax = at?.x ?? this.width / 2;
+    const ay = at?.y ?? this.height / 2;
+    const wx = this.cam.x + ax / this.scale;
+    const wy = this.cam.y + ay / this.scale;
     this.scale = nextScale;
-    this.cam = { x: cx - this.width / 2 / nextScale, y: cy - this.height / 2 / nextScale };
+    this.cam = { x: wx - ax / nextScale, y: wy - ay / nextScale };
     this.emit();
   }
 

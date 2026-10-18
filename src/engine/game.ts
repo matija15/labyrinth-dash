@@ -41,6 +41,8 @@ export interface Player {
 export interface GameOptions {
   /** Player runs in the facing direction by itself; walls flip it via wall jumps. */
   autoRun?: boolean;
+  /** Editor playtest: allow a level without an exit flag (room practice). */
+  allowNoGoal?: boolean;
 }
 
 interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[] }
@@ -101,7 +103,7 @@ export class Game {
   constructor(level: LevelDef, opts: GameOptions = {}) {
     this.level = level;
     this.autoRun = !!opts.autoRun;
-    this.world = buildWorld(level);
+    this.world = buildWorld(level, { allowNoGoal: opts.allowNoGoal });
     this.room = this.world.rooms[0];
     this.checkpoint = { ...this.world.start };
     this.keysTaken = this.world.keys.map(() => false);
