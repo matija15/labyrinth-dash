@@ -5,6 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
+import { playEventSound, setAudioPrefs, setMusicPlaying, warmUpAudio } from '../engine/audio';
 import { Game } from '../engine/game';
 import { TouchController } from '../engine/input';
 import { GameLoop } from '../engine/loop';
@@ -43,6 +44,12 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 20);
   const smallFont = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 12);
   const autoRun = (save.controls ?? 'auto') === 'auto';
+  useEffect(() => setAudioPrefs(save.audio), [save.audio]);
+  useEffect(() => {
+    warmUpAudio();
+    setMusicPlaying(true);
+    return () => setMusicPlaying(false);
+  }, []);
   const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest }), [level, autoRun, playtest]);
   const { player: playerSkin, theme } = selectedLook(save);
   const look = useMemo(() => ({ player: playerSkin, theme }), [playerSkin, theme]);
@@ -84,6 +91,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         game.step(touch.input);
         for (const e of game.drainEvents()) {
           haptic(e);
+          playEventSound(e);
           if (playtest && e.type === 'death') {
             exitTimer ??= setTimeout(() => live.current.onExit(), 450);
           } else if (playtest && e.type === 'goal') {

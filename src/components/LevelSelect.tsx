@@ -13,6 +13,7 @@ interface Props {
   onPlay: (id: string) => void;
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
+  onAudio: (audio: { sfx: boolean; music: boolean }) => void;
   onEditor: () => void;
   onSkins: () => void;
   /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
@@ -21,9 +22,11 @@ interface Props {
   onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor, onSkins, devTools, pack, onPack }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onEditor, onSkins, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
+  const sfx = save.audio?.sfx ?? true;
+  const music = save.audio?.music ?? true;
   const problems = useMemo(() => levels.map((l) => validateLevel(l)[0] ?? null), [levels]);
   return (
     <ScrollView
@@ -52,6 +55,24 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           >
             <Text style={styles.controlsText}>CONTROLS · {controls === 'auto' ? 'AUTO-RUN' : 'RUN PADS'}</Text>
           </Pressable>
+          <View style={styles.devRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle sound effects"
+              onPress={() => onAudio({ sfx: !sfx, music })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>SOUND · {sfx ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle music"
+              onPress={() => onAudio({ sfx, music: !music })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>MUSIC · {music ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
           {devTools && (
             <View style={styles.devRow}>
               <Pressable
