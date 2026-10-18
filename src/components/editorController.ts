@@ -16,6 +16,7 @@ export interface EditorSnapshot {
   /** The drag above places a moving platform instead of a saw. */
   platformDrag: boolean;
   undoCount: number;
+  redoCount: number;
   message: string | null;
   selection: TileRect | null;
   /** Where a paste would land (tile rect), while dragging with the Paste tool. */
@@ -45,6 +46,7 @@ export class EditorController {
   private sawDrag: [number, number, number, number] | null = null;
   private message: string | null = null;
   private undoStack: string[] = [];
+  private redoStack: string[] = [];
   /** True while the middle mouse button pans the map (web); pointer strokes are ignored. */
   middlePan = false;
   private pointers = new Map<number, { x: number; y: number }>();
@@ -68,7 +70,7 @@ export class EditorController {
   snapshot(): EditorSnapshot {
     return {
       level: this.level, version: this.version, camX: this.cam.x, camY: this.cam.y, cursor: this.cursor,
-      sawDrag: this.sawDrag, platformDrag: this.tool === 'platform', undoCount: this.undoStack.length, message: this.message, selection: this.selection,
+      sawDrag: this.sawDrag, platformDrag: this.tool === 'platform', undoCount: this.undoStack.length, redoCount: this.redoStack.length, message: this.message, selection: this.selection,
       pastePreview: this.clip && this.pasteAt ? { x: this.pasteAt[0], y: this.pasteAt[1], w: this.clip.w, h: this.clip.h } : null,
       hasClip: !!this.clip,
     };
@@ -101,13 +103,34 @@ export class EditorController {
   private pushUndo(snapshot: string) {
     this.undoStack.push(snapshot);
     if (this.undoStack.length > UNDO_LIMIT) this.undoStack.shift();
+    this.redoStack = [];
   }
 
   undo() {
     const prev = this.undoStack.pop();
     if (!prev) return;
+    this.redoStack.push(JSON.stringify(this.level));
     this.level = JSON.parse(prev);
     this.emit(true);
+  }
+
+  redo() {
+    const next = this.redoStack.pop();
+    if (!next) return;
+    this.undoStack.push(JSON.stringify(this.level));
+    this.level = JSON.parse(next);
+    this.emit(true);
+  }
+
+  /** The copied block (for saving it as a stamp). */
+  getClip(): Clip | null {
+    return this.clip;
+  }
+
+  /** Loads a stamp as the block the Paste tool places. */
+  setClip(clip: Clip) {
+    this.clip = clip;
+    this.emit(false);
   }
 
   /** Replaces the level (undoable unless restoring a saved draft). */

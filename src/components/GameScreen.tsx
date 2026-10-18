@@ -5,6 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
+import { PLAYER_H, PLAYER_W } from '../engine/constants';
 import { playEventSound, setAudioPrefs, setMusicPlaying, warmUpAudio } from '../engine/audio';
 import { Game } from '../engine/game';
 import { TouchController } from '../engine/input';
@@ -25,6 +26,8 @@ interface Props {
   onNext: () => void;
   /** Editor playtest: nothing is saved, pause / death return to the editor. */
   playtest?: boolean;
+  /** Editor playtest: where the player died (world px), for the editor's death markers. */
+  onDeath?: (x: number, y: number) => void;
 }
 
 interface Result { ms: number; deaths: number; best: number; newBest: boolean }
@@ -38,7 +41,7 @@ const haptic = (e: GameEvent) => {
   else if (e.type === 'key' || e.type === 'orb' || e.type === 'walldrop') Haptics.selectionAsync();
 };
 
-export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playtest = false }: Props) {
+export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playtest = false, onDeath }: Props) {
   useKeepAwake();
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 20);
@@ -67,11 +70,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const [result, setResult] = useState<Result | null>(null);
 
   const saveRef = useRef(save);
-  const live = useRef({ size, font, smallFont, insets, onSave, onExit, look, art, staticPic });
+  const live = useRef({ size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic });
   const pausedRef = useRef(false);
   useLayoutEffect(() => {
     saveRef.current = save;
-    live.current = { size, font, smallFont, insets, onSave, onExit, look, art, staticPic };
+    live.current = { size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic };
   });
 
   const togglePause = useCallback(() => {
@@ -93,6 +96,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
           haptic(e);
           playEventSound(e);
           if (playtest && e.type === 'death') {
+            live.current.onDeath?.(game.player.x + PLAYER_W / 2, game.player.y + PLAYER_H / 2);
             exitTimer ??= setTimeout(() => live.current.onExit(), 450);
           } else if (playtest && e.type === 'goal') {
             const ms = Math.round(game.time * 1000);

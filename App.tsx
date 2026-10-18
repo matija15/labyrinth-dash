@@ -20,6 +20,7 @@ export default function App() {
   const [skins, setSkins] = useState(false);
   const [pack, setPack] = useState<LevelPack>('release');
   const [playtest, setPlaytest] = useState<{ level: LevelDef; run: number } | null>(null);
+  const [deathMarks, setDeathMarks] = useState<[number, number][]>([]);
 
   useEffect(() => {
     loadSave().then(setSave);
@@ -55,6 +56,8 @@ export default function App() {
                 active={!playtest}
                 onPlaytest={(l) => setPlaytest((p) => ({ level: l, run: (p?.run ?? 0) + 1 }))}
                 onExit={() => setEditing(false)}
+                deathMarks={deathMarks}
+                onClearDeathMarks={() => setDeathMarks([])}
               />
               {playtest && (
                 <View style={StyleSheet.absoluteFill}>
@@ -67,6 +70,7 @@ export default function App() {
                     onSave={noop}
                     onExit={() => setPlaytest(null)}
                     onNext={noop}
+                    onDeath={(x, y) => setDeathMarks((m) => [...m.slice(-499), [x, y]])}
                   />
                 </View>
               )}

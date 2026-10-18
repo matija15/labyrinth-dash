@@ -41,6 +41,7 @@ const makePaints = () => ({
   crystal: mk(MECH.crystal),
   wind: mk(MECH.wind, { stroke: 0.7, alpha: 0.8 }),
   plat: mk('#8fa6ff'),
+  death: mk('#ff3b5c', { stroke: 0.9, alpha: 0.85 }),
   platGhost: mk('#8fa6ff', { alpha: 0.3 }),
   platPath: mk('#8fa6ff', { stroke: 0.6, alpha: 0.7 }),
   goalGlow: mk(COLORS.goal, { blur: 4, alpha: 0.7 }),
@@ -213,6 +214,8 @@ export interface EditorFrame {
   cursor: [number, number] | null;
   sawDrag: [number, number, number, number] | null;
   platformDrag?: boolean;
+  /** Playtest deaths (world px). */
+  deathMarks?: [number, number][];
   selection?: TileRect | null;
   pastePreview?: TileRect | null;
 }
@@ -256,6 +259,10 @@ export function renderEditorFrame(f: EditorFrame): SkPicture {
   if (f.pastePreview) {
     c.drawRect(rect(f.pastePreview), P.pasteFill);
     c.drawRect(rect(f.pastePreview), P.paste);
+  }
+  for (const [x, y] of f.deathMarks ?? []) {
+    c.drawLine(x - 2, y - 2, x + 2, y + 2, P.death);
+    c.drawLine(x - 2, y + 2, x + 2, y - 2, P.death);
   }
   if (f.cursor) c.drawRect(Skia.XYWHRect(f.cursor[0] * TILE, f.cursor[1] * TILE, TILE, TILE), P.cursor);
   c.restore();

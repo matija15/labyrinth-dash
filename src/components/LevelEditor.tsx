@@ -10,7 +10,7 @@ import {
   TOOL_SHORTCUTS, toolForKey, type EditorTool,
 } from '../engine/editor';
 import { deletePackLevel, fetchPack, reorderPack, savePackLevel } from '../engine/levelServer';
-import { loadEditorDraft, writeEditorDraft } from '../engine/storage';
+import { loadEditorDraft, loadStamps, writeEditorDraft, writeStamps, type Stamp } from '../engine/storage';
 import { DEV_LEVELS, RELEASE_LEVELS } from '../levels';
 import type { LevelDef } from '../types';
 import { EditorController, type EditorSnapshot } from './editorController';
@@ -22,6 +22,9 @@ interface Props {
   active: boolean;
   onPlaytest: (level: LevelDef) => void;
   onExit: () => void;
+  /** Where playtests died (world px), drawn as red ✕ marks. */
+  deathMarks?: [number, number][];
+  onClearDeathMarks?: () => void;
 }
 
 const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
@@ -85,7 +88,7 @@ const ZOOM_MIN = 0.33;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 1.25;
 const PALETTE_W = 126;
-export function LevelEditor({ active, onPlaytest, onExit }: Props) {
+export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDeathMarks }: Props) {
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 11);
   const ctl = useMemo(() => new EditorController(), []);
@@ -96,7 +99,24 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   const [zoom, setZoom] = useState(1);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [modal, setModal] = useState<'export' | 'levels' | 'save' | null>(null);
+  const [modal, setModal] = useState<'export' | 'levels' | 'save' | 'stamps' | null>(null);
+  const [stamps, setStamps] = useState<Stamp[]>([]);
+  useEffect(() => {
+    loadStamps().then(setStamps);
+  }, []);
+  const updateStamps = (next: Stamp[]) => {
+    setStamps(next);
+    void writeStamps(next);
+  };
+  const saveStamp = () => {
+    if (!snap.selection) return ctl.setMessage('Select a block first, then press Stamp');
+    ctl.selectionOp('copy');
+    const clip = ctl.getClip();
+    if (!clip) return;
+    const name = `Stamp ${stamps.length + 1}`;
+    updateStamps([...stamps, { name, clip }]);
+    ctl.setMessage(`Saved “${name}” (${clip.w}×${clip.h}) · open Stamps to place it`);
+  };
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   const baseScale = (BASE_ZOOM * (size.height || 1)) / (VIEW_TILES_H * TILE);
@@ -149,9 +169,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     return renderEditorFrame({
       level: snap.level, content, width: size.width, height: size.height, scale,
       camX: snap.camX, camY: snap.camY, grid, font, cursor: snap.cursor, sawDrag: snap.sawDrag,
-      platformDrag: snap.platformDrag, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
+      platformDrag: snap.platformDrag, deathMarks, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
     });
-  }, [content, size, scale, grid, font, snap, tool]);
+  }, [content, size, scale, grid, font, snap, tool, deathMarks]);
 
   const gesture = useMemo(() => createEditorGesture(ctl), [ctl]);
 
@@ -201,6 +221,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     const d = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, number[]>)[e.key];
     if (d) {
       ctl.panBy(d[0], d[1]);
+      e.preventDefault();
+    } else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) {
+      ctl.redo();
       e.preventDefault();
     } else if (mod && k === 'z') {
       ctl.undo();
@@ -343,11 +366,14 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
 
       <View style={[styles.topBar, { top: insets.top + 8, right: insets.right + 8, left: insets.left + PALETTE_W + 16 }]}>
         <BarButton label="Undo" onPress={() => ctl.undo()} disabled={!snap.undoCount} />
+        <BarButton label="Redo" onPress={() => ctl.redo()} disabled={!snap.redoCount} />
         <BarButton label={grid ? 'Grid ✓' : 'Grid'} onPress={() => setGrid((g) => !g)} />
         <BarButton label="−" a11y="Zoom out" onPress={() => zoomTo(zoom / ZOOM_STEP)} disabled={zoom <= ZOOM_MIN + 1e-6} />
         <BarButton label={`${Math.round(zoom * 100)}% ⟲`} a11y="Reset zoom" onPress={() => zoomTo(1)} />
         <BarButton label="+" a11y="Zoom in" onPress={() => zoomTo(zoom * ZOOM_STEP)} disabled={zoom >= ZOOM_MAX - 1e-6} />
         <BarButton label="Levels" onPress={() => setModal('levels')} />
+        <BarButton label="Stamps" onPress={() => setModal('stamps')} />
+        {!!deathMarks?.length && <BarButton label={`✕ ${deathMarks.length} deaths`} onPress={() => onClearDeathMarks?.()} />}
         <BarButton label="Save" onPress={() => setModal('save')} />
         <BarButton label="Export" onPress={() => setModal('export')} />
         <BarButton label="▶ Room [T]" a11y="Playtest current room" onPress={playtestRoom} primary />
@@ -361,6 +387,7 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
           <Text style={styles.small}>{snap.selection.w}×{snap.selection.h}</Text>
           <BarButton label="Copy" onPress={() => ctl.selectionOp('copy')} />
           <BarButton label="Cut" onPress={() => ctl.selectionOp('cut')} />
+          <BarButton label="Stamp" onPress={saveStamp} />
           <BarButton label={`Fill ${fillLabel}`} onPress={() => ctl.selectionOp('fill', fillTool)} />
           <BarButton label="Clear" onPress={() => ctl.selectionOp('clear')} />
           <BarButton label="✕" onPress={() => ctl.selectionOp('deselect')} />
@@ -385,6 +412,19 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
           onSaved={(id, position) => {
             setSourceId(id);
             ctl.setMessage(`Saved ${id}.json as level ${position}`);
+            setModal(null);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'stamps' && (
+        <StampsModal
+          stamps={stamps}
+          onChange={updateStamps}
+          onUse={(s) => {
+            ctl.setClip(s.clip);
+            pickTool('paste');
+            ctl.setMessage(`Placing “${s.name}” · drag to position, release to paste`);
             setModal(null);
           }}
           onClose={() => setModal(null)}
@@ -448,6 +488,38 @@ function Sheet({ title, children, onClose }: { title: string; children: React.Re
         {children}
       </View>
     </View>
+  );
+}
+
+function StampsModal({
+  stamps, onChange, onUse, onClose,
+}: {
+  stamps: Stamp[];
+  onChange: (stamps: Stamp[]) => void;
+  onUse: (stamp: Stamp) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet title="STAMPS" onClose={onClose}>
+      {stamps.length === 0 && (
+        <Text style={styles.small}>No stamps yet. Use Select, drag a box, then press Stamp to save it here.</Text>
+      )}
+      <ScrollView style={{ maxHeight: 320 }}>
+        {stamps.map((s, i) => (
+          <View key={i} style={styles.row}>
+            <TextInput
+              value={s.name}
+              onChangeText={(name) => onChange(stamps.map((x, j) => (j === i ? { ...x, name } : x)))}
+              style={[styles.input, { flex: 1 }]}
+              autoCorrect={false}
+            />
+            <Text style={styles.small}>{s.clip.w}×{s.clip.h}</Text>
+            <BarButton label="Use" onPress={() => onUse(s)} primary />
+            <BarButton label="Delete" onPress={() => onChange(stamps.filter((_, j) => j !== i))} />
+          </View>
+        ))}
+      </ScrollView>
+    </Sheet>
   );
 }
 
