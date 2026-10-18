@@ -6,16 +6,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GameScreen } from './src/components/GameScreen';
 import { LevelEditor } from './src/components/LevelEditor';
 import { LevelSelect } from './src/components/LevelSelect';
+import { SkinPicker } from './src/components/SkinPicker';
 import { COLORS } from './src/components/renderer';
 import { emptySave } from './src/engine/save';
 import { loadSave, resetSave, writeSave } from './src/engine/storage';
-import { DEV_TOOLS, packLevels, type LevelPack } from './src/levels';
+import { DEV_TOOLS, packLevels, RELEASE_LEVELS, type LevelPack } from './src/levels';
 import type { LevelDef, SaveData } from './src/types';
 
 export default function App() {
   const [save, setSave] = useState<SaveData | null>(null);
   const [levelId, setLevelId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [skins, setSkins] = useState(false);
   const [pack, setPack] = useState<LevelPack>('release');
   const [playtest, setPlaytest] = useState<{ level: LevelDef; run: number } | null>(null);
 
@@ -69,6 +71,8 @@ export default function App() {
                 </View>
               )}
             </>
+          ) : save && skins ? (
+            <SkinPicker save={save} releaseIds={RELEASE_IDS} onSave={onSave} onBack={() => setSkins(false)} />
           ) : save ? (
             <LevelSelect
               levels={levels}
@@ -78,6 +82,7 @@ export default function App() {
               onPack={setPack}
               onPlay={setLevelId}
               onEditor={() => setEditing(true)}
+              onSkins={() => setSkins(true)}
               onControls={(controls) => onSave({ ...save, controls })}
               onReset={() => {
                 resetSave();
@@ -92,5 +97,6 @@ export default function App() {
 }
 
 const noop = () => {};
+const RELEASE_IDS = RELEASE_LEVELS.map((l) => l.id);
 
 const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: COLORS.bg } });

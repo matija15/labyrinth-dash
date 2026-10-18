@@ -113,4 +113,6 @@ export interface SaveData {
   levels: Record<string, LevelRecord>;
   /** Absent in older saves → auto-run. */
   controls?: ControlScheme;
+  /** Equipped skin ids and ad-unlocked skins (`player:<id>` / `theme:<id>`). */
+  skins?: { player?: string; theme?: string; unlocked?: string[] };
 }

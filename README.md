@@ -95,6 +95,33 @@ Demo levels:
 
 In a release build each level unlocks after you clear the previous one. Long-press "hold to reset save" on the level select screen to wipe your progress.
 
+## Skins
+
+**SKINS** on the level select screen opens the skin picker. It has two sections, **PLAYER** and
+**BLOCKS & SPIKES** (world themes), and a live preview drawn with the real game renderer. Tapping
+an unlocked skin equips it, and tapping a locked one previews it. Skins are purely visual:
+hitboxes and physics are identical in every skin.
+
+- **Adding a skin:** append to `PLAYER_SKINS` or `THEMES` in `src/engine/skins.ts`. Ids are stored
+  in saves, so keep them stable.
+  - Player skins set a color, a dash-spent color, a trail color, and a `shape` of `block`,
+    `round` or `hollow`.
+  - Themes set colors plus `blocks` (`neon` / `brick` / `flat`) and `spikes` (`sharp` / `chunky` / `needle`).
+- **Your own art:** put 16×16 PNGs in `assets/skins/<set>/` and register them in `ART` in
+  `src/skins/art.ts`. Then set `art: '<set>'` on the skin and add the key to `ArtKey`.
+  - The slots are `player`, `solid`, `spike`, `saw`, `crumble`, `door`, `pad`, `key`, `orb` and `goal`.
+  - Every slot is optional and falls back to the vector drawing.
+  - Draw `spike` pointing up (it's rotated for walls and ceilings) and `player` facing right (it's mirrored).
+  - `assets/skins/pixel/` is a working example.
+- **Unlocks:** `{ type: 'free' }`, `{ type: 'clears', count }` (release levels cleared),
+  `{ type: 'deaths', count }` (total deaths) or `{ type: 'ad' }`.
+- **Ads:** `showRewardedAd()` in `src/engine/ads.ts` is a stub that grants the unlock immediately.
+  Real rewarded ads (AdMob) and purchases need native modules that Expo Go doesn't include, so they
+  come with an EAS development build.
+- **Readability:** `tests/skins.test.ts` fails if a theme's spikes or saws, or any player skin,
+  fall below a contrast ratio of 3 against the background. Spikes also need a contrast of at
+  least 2.5 against blocks.
+
 ## Project structure
 
 ```
