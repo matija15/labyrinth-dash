@@ -24,7 +24,8 @@
     },
     "backgroundColor": "#06070d",
     "plugins": [
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-audio"
     ]
   }
 }

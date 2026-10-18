@@ -8,6 +8,8 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `K` key          `D` locked door (connected D tiles open together)
  *  `O` dash orb     `J` jump pad     `1`-`9` portal pair  `S` spawn/checkpoint
  *  `G` goal         `.` or space: empty
+ *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
+ *  `*` crystal (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =
   | '#'
@@ -48,6 +50,17 @@ export type SawDef =
       phase?: number;
     };
 
+export interface PlatformDef {
+  /** Waypoints of the platform's top-left corner in room tile coordinates. */
+  points: [number, number][];
+  /** Width in tiles (platforms are one tile thick). */
+  w: number;
+  /** Tiles per second. */
+  speed: number;
+  /** `loop` returns from the last point to the first; `pingpong` (default) reverses. */
+  mode?: 'loop' | 'pingpong';
+}
+
 export interface RoomDef {
   id: string;
   /** Room offset in world tiles. Rooms are stitched into one continuous world grid. */
@@ -55,6 +68,8 @@ export interface RoomDef {
   y: number;
   tiles: string[];
   saws?: SawDef[];
+  /** Solid moving platforms that carry the player. */
+  platforms?: PlatformDef[];
   /** Optional tutorial text shown when entering the room. */
   hint?: string;
 }
@@ -93,6 +108,9 @@ export type GameEvent =
   | { type: 'key' }
   | { type: 'unlock' }
   | { type: 'orb' }
+  | { type: 'crystal' }
+  | { type: 'switch' }
+  | { type: 'crush' }
   | { type: 'pad' }
   | { type: 'portal' }
   | { type: 'room' }

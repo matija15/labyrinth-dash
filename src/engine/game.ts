@@ -1,7 +1,7 @@
 import type { GameEvent, InputState, LevelDef, Rect, SawDef, Vec2 } from '../types';
 import * as C from './constants';
 import { approach, circleRect, clamp, easeInOut, lerp, makeRng, overlaps } from './math';
-import { buildWorld, roomAt, T, tileAt, type Room, type World } from './world';
+import { buildWorld, roomAt, T, tileAt, WIND_DIR, type Room, type World } from './world';
 
 export interface Particle {
   x: number; y: number; vx: number; vy: number;
@@ -45,7 +45,7 @@ export interface GameOptions {
   allowNoGoal?: boolean;
 }
 
-interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[] }
+interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean }
 
 interface Camera { x: number; y: number }
 
@@ -57,8 +57,10 @@ const ORB_COLOR = 2;
 const DUST_COLOR = 3;
 const SPIKE_COLOR = 4;
 const PAD_COLOR = 5;
+const CRYSTAL_COLOR = 6;
+const NO_WIND: Vec2 = { x: 0, y: 0 };
 
-export const PARTICLE_COLORS = ['#4de8ff', '#ffd23f', '#3dff9a', '#8b93b8', '#ff3b6b', '#ff9f1c'];
+export const PARTICLE_COLORS = ['#4de8ff', '#ffd23f', '#3dff9a', '#8b93b8', '#ff3b6b', '#ff9f1c', '#ff7ae0'];
 
 export class Game {
   readonly level: LevelDef;
@@ -82,6 +84,11 @@ export class Game {
   crumbleTimer: number[];
   crumbleState: Uint8Array; // 0 idle, 1 shaking, 2 gone
   padFlash: number[];
+  crystalCooldown: number[];
+  /** Switch blocks: false → `[` blocks are solid, true → `]` blocks. Swaps on every dash. */
+  switchFlipped = false;
+  /** Current room's moving platforms (world px), updated every step. */
+  plats: Rect[] = [];
 
   particles: Particle[] = [];
   ghosts: Ghost[] = [];
@@ -99,6 +106,8 @@ export class Game {
   private holdIsJump = false;
   private transition = { from: { x: 0, y: 0 }, to: { x: 0, y: 0 }, t: 0 };
   private rng = makeRng(1337);
+  /** Switch tiles that turned solid around the player; they stay passable until the player leaves them. */
+  private switchGhost: number[] = [];
 
   constructor(level: LevelDef, opts: GameOptions = {}) {
     this.level = level;
@@ -112,6 +121,8 @@ export class Game {
     this.crumbleTimer = this.world.crumbles.map(() => 0);
     this.crumbleState = new Uint8Array(this.world.crumbles.length);
     this.padFlash = this.world.pads.map(() => 0);
+    this.crystalCooldown = this.world.crystals.map(() => 0);
+    this.plats = this.platRects(this.room);
     this.player = this.freshPlayer(this.checkpoint);
     this.snapshot = this.takeSnapshot();
     this.snapCamera();
@@ -169,6 +180,7 @@ export class Game {
       input.tapQueue = 0;
       if (this.phase === 'dead' && this.phaseTimer <= 0) this.respawn();
       else if (this.phase === 'respawning' && this.phaseTimer <= 0) this.phase = 'playing';
+      this.plats = this.platRects(this.room);
       this.updateWorldObjects(dt);
       return;
     }
@@ -180,6 +192,8 @@ export class Game {
       return;
     }
     this.readInput(input);
+    this.movePlatforms();
+    if (this.phase !== 'playing') return;
     this.updatePlayer(input, dt);
     this.updateWorldObjects(dt);
     if (this.phase === 'playing') this.interact();
@@ -272,12 +286,12 @@ export class Game {
     const p = this.player;
     const held = input.jumpHeld && this.holdIsJump;
     const wasGround = p.onGround;
-    p.onGround = p.vy >= 0 && this.solidRect(p.x, p.y + 1, C.PLAYER_W, C.PLAYER_H);
+    p.onGround = p.vy >= 0 && (this.solidRect(p.x, p.y + 1, C.PLAYER_W, C.PLAYER_H) || this.oneWayTop(p.x, p.y + C.PLAYER_H, p.y + C.PLAYER_H + 1) !== null);
     p.wallDir = p.onGround ? 0 : this.wallDirAt(1);
 
     if (p.onGround) {
       p.coyote = C.COYOTE_TIME;
-      if (p.dashTimer <= 0) p.dashes = 1;
+      if (p.dashTimer <= 0) p.dashes = Math.max(p.dashes, 1);
       if (!wasGround) {
         p.scaleX = 1.35;
         p.scaleY = 0.65;
@@ -293,7 +307,7 @@ export class Game {
       p.coyote -= dt;
     }
     if (p.wallDir !== 0 && p.dashTimer <= 0) {
-      p.dashes = 1;
+      p.dashes = Math.max(p.dashes, 1);
       this.touchCrumbleSide(p.wallDir);
     }
 
@@ -301,6 +315,7 @@ export class Game {
     p.dashBuffer -= dt;
     p.forceMoveTimer -= dt;
     if (input.moveX !== 0 && !this.autoRun) p.facing = input.moveX;
+    const wind = this.windAt();
 
     // Dash start (auto-run: a straight down swipe on a wall is a wall drop instead)
     const swipe = p.dashBuffer > 0 ? p.bufferedDash : null;
@@ -347,6 +362,8 @@ export class Game {
       if (clinging && this.rng() < 0.25)
         this.burst(p.x + (p.wallDir > 0 ? C.PLAYER_W : 0), p.y + C.PLAYER_H, 1, DUST_COLOR, 12, -Math.PI / 2, 1);
 
+      if (wind.y < 0) p.vy = Math.max(C.UPDRAFT_MAX, Math.min(p.vy, p.vy - C.UPDRAFT_ACCEL * dt));
+
       if (p.varJumpTimer > 0) {
         if (held) p.vy = Math.min(p.vy, p.varJumpSpeed);
         else p.varJumpTimer = 0;
@@ -366,8 +383,16 @@ export class Game {
     p.scaleY = approach(p.scaleY, 1, 4 * dt);
     if (Math.abs(p.vx) > C.RUN_SPEED * 1.3 && p.dashTimer <= 0) this.spawnGhost(dt);
 
-    this.moveX(p.vx * dt);
-    this.moveY(p.vy * dt);
+    const drift = p.dashTimer > 0 ? 0 : 1;
+    this.moveX((p.vx + wind.x * C.WIND_PUSH * drift) * dt);
+    this.moveY((p.vy + (wind.y > 0 ? C.DOWNDRAFT_PUSH * drift : 0)) * dt);
+  }
+
+  /** Wind blowing at the player's center ({0, 0} outside wind tiles). */
+  windAt(): Vec2 {
+    const p = this.player;
+    const t = tileAt(this.world, Math.floor((p.x + C.PLAYER_W / 2) / C.TILE), Math.floor((p.y + C.PLAYER_H / 2) / C.TILE));
+    return WIND_DIR[t] ?? NO_WIND;
   }
 
   private jump() {
@@ -420,6 +445,7 @@ export class Game {
     this.freeze = C.DASH_FREEZE;
     this.shake = Math.max(this.shake, 2.2);
     this.events.push({ type: 'dash' });
+    if (this.world.switches.length) this.toggleSwitches();
     this.burst(p.x + C.PLAYER_W / 2, p.y + C.PLAYER_H / 2, 8, PLAYER_COLOR, 60, Math.atan2(-dy, -dx), 1.6);
   }
 
@@ -454,10 +480,26 @@ export class Game {
     const i = ty * this.world.w + tx;
     if (t === T.Crumble) return this.crumbleState[this.world.crumbleOf[i]] !== 2;
     if (t === T.Door) return !this.doorsOpen[this.world.doorOf[i]];
+    if (t === T.SwitchA || t === T.SwitchB) return (t === T.SwitchB) === this.switchFlipped && !this.switchGhost.includes(i);
     return false;
   }
 
+  /** Top (px) of a one-way platform that feet moving down from `from` to `to` (px) land on, or null. */
+  oneWayTop(x: number, from: number, to: number): number | null {
+    const ty = Math.floor(to / C.TILE);
+    const top = ty * C.TILE;
+    if (from > top + 0.001 || to <= top) return null;
+    const x0 = Math.floor(x / C.TILE);
+    const x1 = Math.floor((x + C.PLAYER_W - 0.001) / C.TILE);
+    for (let tx = x0; tx <= x1; tx++) if (tileAt(this.world, tx, ty) === T.OneWay) return top;
+    return null;
+  }
+
   solidRect(x: number, y: number, w: number, h: number): boolean {
+    return this.solidTiles(x, y, w, h) || this.plats.some((r) => hits(r, x, y, w, h));
+  }
+
+  private solidTiles(x: number, y: number, w: number, h: number): boolean {
     const x0 = Math.floor(x / C.TILE);
     const x1 = Math.floor((x + w - 0.001) / C.TILE);
     const y0 = Math.floor(y / C.TILE);
@@ -491,9 +533,7 @@ export class Game {
         }
       }
     }
-    p.x = amount > 0
-      ? Math.floor((nx + C.PLAYER_W) / C.TILE) * C.TILE - C.PLAYER_W
-      : (Math.floor(nx / C.TILE) + 1) * C.TILE;
+    p.x = this.stopAt('x', p.x, nx);
     if (this.solidRect(p.x, p.y, C.PLAYER_W, C.PLAYER_H)) p.x = nx - amount; // safety
     p.vx = 0;
     if (p.dashTimer > 0 && p.dashDir.y === 0) p.dashTimer = Math.min(p.dashTimer, 0.02);
@@ -503,6 +543,15 @@ export class Game {
     const p = this.player;
     if (amount === 0) return;
     const ny = p.y + amount;
+    const throughOneWay = p.dashTimer > 0 && p.dashDir.y > 0 && p.dashDir.x === 0;
+    if (amount > 0 && !throughOneWay) {
+      const top = this.oneWayTop(p.x, p.y + C.PLAYER_H, ny + C.PLAYER_H);
+      if (top !== null && !this.solidRect(p.x, top - C.PLAYER_H, C.PLAYER_W, C.PLAYER_H)) {
+        p.y = top - C.PLAYER_H;
+        p.vy = 0;
+        return;
+      }
+    }
     if (!this.solidRect(p.x, ny, C.PLAYER_W, C.PLAYER_H)) {
       p.y = ny;
       return;
@@ -519,12 +568,28 @@ export class Game {
         }
       }
     }
-    p.y = amount > 0
-      ? Math.floor((ny + C.PLAYER_H) / C.TILE) * C.TILE - C.PLAYER_H
-      : (Math.floor(ny / C.TILE) + 1) * C.TILE;
+    p.y = this.stopAt('y', p.y, ny);
     if (this.solidRect(p.x, p.y, C.PLAYER_W, C.PLAYER_H)) p.y = ny - amount;
     if (amount < 0) p.varJumpTimer = 0;
     p.vy = 0;
+  }
+
+  /** Where a blocked move from `from` toward `to` along one axis stops: flush against the nearest tile or platform. */
+  private stopAt(axis: 'x' | 'y', from: number, to: number): number {
+    const p = this.player;
+    const size = axis === 'x' ? C.PLAYER_W : C.PLAYER_H;
+    const x = axis === 'x' ? to : p.x;
+    const y = axis === 'x' ? p.y : to;
+    const fwd = to > from;
+    let stop = fwd ? Infinity : -Infinity;
+    if (this.solidTiles(x, y, C.PLAYER_W, C.PLAYER_H))
+      stop = fwd ? Math.floor((to + size) / C.TILE) * C.TILE - size : (Math.floor(to / C.TILE) + 1) * C.TILE;
+    for (const r of this.plats) {
+      if (!hits(r, x, y, C.PLAYER_W, C.PLAYER_H)) continue;
+      const lo = axis === 'x' ? r.x : r.y;
+      stop = fwd ? Math.min(stop, lo - size) : Math.max(stop, lo + (axis === 'x' ? r.w : r.h));
+    }
+    return fwd ? Math.max(from, stop) : Math.min(from, stop);
   }
 
   // -------------------------------------------------------- world objects
@@ -542,36 +607,77 @@ export class Game {
         angle: t * 9,
       };
     }
-    const pts = def.points;
-    const segs: number[] = [];
-    let total = 0;
-    const count = def.mode === 'loop' ? pts.length : pts.length - 1;
-    for (let i = 0; i < count; i++) {
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      segs.push(len);
-      total += len;
+    const [x, y] = pathAt(def.points, def.speed, def.mode, t);
+    return { x: ox + x * C.TILE, y: oy + y * C.TILE, r: def.radius * C.TILE, angle: t * 9 };
+  }
+
+  /** World-px rects of a room's moving platforms at simulation time `t`. */
+  platRects(room: Room, t = this.worldTime): Rect[] {
+    return room.platforms.map((def) => {
+      const [x, y] = pathAt(def.points, def.speed, def.mode, t);
+      return { x: (room.tx + x) * C.TILE, y: (room.ty + y) * C.TILE, w: def.w * C.TILE, h: C.TILE };
+    });
+  }
+
+  /** Moves the current room's platforms to `worldTime`: riders are carried, anything in the way is pushed or crushed. */
+  private movePlatforms() {
+    if (!this.room.platforms.length) return;
+    const p = this.player;
+    const old = this.plats;
+    const next = this.platRects(this.room);
+    this.plats = next;
+    for (let i = 0; i < next.length; i++) {
+      const o = old[i];
+      const n = next[i];
+      const dx = n.x - o.x;
+      const dy = n.y - o.y;
+      if (dx === 0 && dy === 0) continue;
+      const spans = p.x < o.x + o.w && p.x + C.PLAYER_W > o.x;
+      const riding = spans && p.vy >= 0 && Math.abs(p.y + C.PLAYER_H - o.y) < 0.01;
+      const pr = this.playerRect;
+      if (riding) {
+        const ny = n.y - C.PLAYER_H;
+        if (this.solidRect(p.x, ny, C.PLAYER_W, C.PLAYER_H)) return this.crush();
+        p.y = ny;
+        if (!this.solidRect(p.x + dx, p.y, C.PLAYER_W, C.PLAYER_H)) p.x += dx;
+      } else if (overlaps(n, pr)) {
+        if (dy !== 0 && spans) p.y = dy > 0 ? n.y + n.h : n.y - C.PLAYER_H;
+        else p.x = dx > 0 ? n.x + n.w : n.x - C.PLAYER_W;
+        if (this.solidRect(p.x, p.y, C.PLAYER_W, C.PLAYER_H)) return this.crush();
+        if (dy > 0 && spans) p.vy = Math.max(p.vy, 0);
+      }
     }
-    let d = (t * def.speed) % (def.mode === 'loop' ? total : total * 2);
-    if (def.mode !== 'loop' && d > total) d = total * 2 - d;
-    let i = 0;
-    while (i < segs.length - 1 && d > segs[i]) d -= segs[i++];
-    const a = pts[i];
-    const b = pts[(i + 1) % pts.length];
-    const k = segs[i] ? Math.min(1, d / segs[i]) : 0;
-    return {
-      x: ox + lerp(a[0], b[0], k) * C.TILE,
-      y: oy + lerp(a[1], b[1], k) * C.TILE,
-      r: def.radius * C.TILE,
-      angle: t * 9,
-    };
+  }
+
+  private crush() {
+    this.events.push({ type: 'crush' });
+    this.die();
+  }
+
+  private toggleSwitches() {
+    this.switchFlipped = !this.switchFlipped;
+    const pr = this.playerRect;
+    const solidKind = this.switchFlipped ? T.SwitchB : T.SwitchA;
+    this.switchGhost = this.world.switches.filter((i) => {
+      if (this.world.grid[i] !== solidKind) return false;
+      const tx = i % this.world.w;
+      const ty = Math.floor(i / this.world.w);
+      return overlaps({ x: tx * C.TILE, y: ty * C.TILE, w: C.TILE, h: C.TILE }, pr);
+    });
+    this.events.push({ type: 'switch' });
   }
 
   private updateWorldObjects(dt: number) {
     for (let i = 0; i < this.orbCooldown.length; i++) if (this.orbCooldown[i] > 0) this.orbCooldown[i] -= dt;
     for (let i = 0; i < this.padFlash.length; i++) if (this.padFlash[i] > 0) this.padFlash[i] -= dt;
+    for (let i = 0; i < this.crystalCooldown.length; i++) if (this.crystalCooldown[i] > 0) this.crystalCooldown[i] -= dt;
     const pr = this.playerRect;
+    if (this.switchGhost.length)
+      this.switchGhost = this.switchGhost.filter((i) => {
+        const tx = i % this.world.w;
+        const ty = Math.floor(i / this.world.w);
+        return overlaps({ x: tx * C.TILE, y: ty * C.TILE, w: C.TILE, h: C.TILE }, pr);
+      });
     for (let i = 0; i < this.crumbleState.length; i++) {
       const s = this.crumbleState[i];
       if (s === 0) continue;
@@ -662,13 +768,23 @@ export class Game {
       }
     });
 
+    this.world.crystals.forEach((o, i) => {
+      if (this.crystalCooldown[i] <= 0 && p.dashes < 2 && Math.hypot(o.x - cx, o.y - cy) < 7) {
+        this.crystalCooldown[i] = C.CRYSTAL_RESPAWN;
+        p.dashes = 2;
+        this.freeze = 0.03;
+        this.events.push({ type: 'crystal' });
+        this.burst(o.x, o.y, 14, CRYSTAL_COLOR, 60, 0, Math.PI * 2);
+      }
+    });
+
     this.world.pads.forEach((pad, i) => {
       const box = { x: pad.tx * C.TILE, y: pad.ty * C.TILE + 4, w: C.TILE, h: 4 };
       if (p.vy >= 0 && overlaps(box, pr)) {
         p.vy = C.PAD_SPEED;
         p.varJumpTimer = 0;
         p.dashTimer = 0;
-        p.dashes = 1;
+        p.dashes = Math.max(p.dashes, 1);
         p.y = Math.min(p.y, box.y - C.PLAYER_H);
         p.scaleX = 0.6;
         p.scaleY = 1.45;
@@ -752,6 +868,8 @@ export class Game {
     this.player.scaleY = 2;
     this.crumbleState.fill(0);
     this.orbCooldown.fill(0);
+    this.crystalCooldown.fill(0);
+    this.switchGhost = [];
     this.snapCamera();
     this.events.push({ type: 'respawn' });
     this.burst(this.checkpoint.x + 3, this.checkpoint.y + 3, 10, PLAYER_COLOR, 40, 0, Math.PI * 2, -1);
@@ -764,12 +882,16 @@ export class Game {
     this.heldKeys = 0;
     this.keysTaken.fill(false);
     this.doorsOpen.fill(false);
+    this.switchFlipped = false;
+    this.switchGhost = [];
     this.snapshot = this.takeSnapshot();
     this.crumbleState.fill(0);
     this.orbCooldown.fill(0);
+    this.crystalCooldown.fill(0);
     this.player = this.freshPlayer(this.checkpoint);
     this.time = 0;
     this.worldTime = 0;
+    this.plats = this.platRects(this.room);
     this.deaths = 0;
     this.phase = 'ready';
     this.particles = [];
@@ -778,13 +900,14 @@ export class Game {
   }
 
   private takeSnapshot(): Snapshot {
-    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], doorsOpen: [...this.doorsOpen] };
+    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], doorsOpen: [...this.doorsOpen], switchFlipped: this.switchFlipped };
   }
 
   private restoreSnapshot() {
     this.heldKeys = this.snapshot.heldKeys;
     this.keysTaken = [...this.snapshot.keysTaken];
     this.doorsOpen = [...this.snapshot.doorsOpen];
+    this.switchFlipped = this.snapshot.switchFlipped;
   }
 
   private checkRoom() {
@@ -809,6 +932,7 @@ export class Game {
     } else if (cy >= r.y + r.h) p.y = Math.max(p.y, nr.y + 1);
 
     this.room = next;
+    this.plats = this.platRects(next);
     let best = next.spawns[0];
     let bestD = Infinity;
     for (const s of next.spawns) {
@@ -820,7 +944,7 @@ export class Game {
     }
     this.checkpoint = { ...best };
     this.snapshot = this.takeSnapshot();
-    p.dashes = 1;
+    p.dashes = Math.max(p.dashes, 1);
     this.transition = { from: { ...this.camera }, to: this.cameraTarget(), t: 0 };
     this.phase = 'transition';
     this.ghosts = [];
@@ -907,3 +1031,29 @@ function spikeLethal(t: T, vx: number, vy: number) {
     default: return false;
   }
 }
+
+/** Position (tile units) along a waypoint path at time `t`: ping-pong by default, or `loop`. */
+export function pathAt(pts: [number, number][], speed: number, mode: 'loop' | 'pingpong' | undefined, t: number): [number, number] {
+  if (pts.length < 2) return pts[0] ?? [0, 0];
+  const segs: number[] = [];
+  let total = 0;
+  const count = mode === 'loop' ? pts.length : pts.length - 1;
+  for (let i = 0; i < count; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    segs.push(len);
+    total += len;
+  }
+  if (total === 0) return pts[0];
+  let d = (t * speed) % (mode === 'loop' ? total : total * 2);
+  if (mode !== 'loop' && d > total) d = total * 2 - d;
+  let i = 0;
+  while (i < segs.length - 1 && d > segs[i]) d -= segs[i++];
+  const a = pts[i];
+  const b = pts[(i + 1) % pts.length];
+  const k = segs[i] ? Math.min(1, d / segs[i]) : 0;
+  return [lerp(a[0], b[0], k), lerp(a[1], b[1], k)];
+}
+
+const hits = (r: Rect, x: number, y: number, w: number, h: number) => x < r.x + r.w && x + w > r.x && y < r.y + r.h && y + h > r.y;

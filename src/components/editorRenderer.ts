@@ -1,8 +1,8 @@
 import { BlurStyle, PaintStyle, Skia, type SkCanvas, type SkFont, type SkPaint, type SkPicture } from '@shopify/react-native-skia';
 import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
-import { levelBounds, roomRect, type TileRect } from '../engine/editor';
+import { PLATFORM_W, levelBounds, roomRect, type TileRect } from '../engine/editor';
 import type { LevelDef, SawDef } from '../types';
-import { COLORS } from './renderer';
+import { COLORS, MECH } from './renderer';
 
 const PORTAL_COLORS = ['#ff4dd2', '#4d9dff', '#ffe14d', '#4dffe1', '#ff8a4d', '#a14dff', '#4dff6a', '#ff4d6a', '#4dd2ff'];
 
@@ -35,6 +35,14 @@ const makePaints = () => ({
   orbGlow: mk(COLORS.orb, { blur: 3, alpha: 0.5 }),
   pad: mk(COLORS.pad),
   goal: mk(COLORS.goal),
+  oneWay: mk(COLORS.solidEdge),
+  switchA: mk(MECH.switchA),
+  switchB: mk(MECH.switchB, { stroke: 0.8 }),
+  crystal: mk(MECH.crystal),
+  wind: mk(MECH.wind, { stroke: 0.7, alpha: 0.8 }),
+  plat: mk('#8fa6ff'),
+  platGhost: mk('#8fa6ff', { alpha: 0.3 }),
+  platPath: mk('#8fa6ff', { stroke: 0.6, alpha: 0.7 }),
   goalGlow: mk(COLORS.goal, { blur: 4, alpha: 0.7 }),
   spawn: mk(COLORS.player),
   spawnRing: mk(COLORS.player, { stroke: 0.6, alpha: 0.6 }),
@@ -150,6 +158,23 @@ export function buildEditorPicture(level: LevelDef): SkPicture {
           const path = d.detach();
           c.drawPath(path, P.goalGlow);
           c.drawPath(path, P.goal);
+        } else if (ch === '-') {
+          c.drawRect(Skia.XYWHRect(x, y, TILE, 2), P.oneWay);
+          c.drawLine(x + 2, y + 2, x + 2, y + 4, P.oneWay);
+          c.drawLine(x + 6, y + 2, x + 6, y + 4, P.oneWay);
+        } else if (ch === '[') {
+          c.drawRect(Skia.XYWHRect(x + 0.3, y + 0.3, TILE - 0.6, TILE - 0.6), P.switchA);
+        } else if (ch === ']') {
+          c.drawRect(Skia.XYWHRect(x + 0.8, y + 0.8, TILE - 1.6, TILE - 1.6), P.switchB);
+        } else if (ch === '*') {
+          const d = Skia.PathBuilder.Make();
+          d.moveTo(cx, cy - 4); d.lineTo(cx + 3, cy); d.lineTo(cx, cy + 4); d.lineTo(cx - 3, cy); d.close();
+          c.drawPath(d.detach(), P.crystal);
+        } else if (ch === '(' || ch === ')' || ch === 'u' || ch === 'n') {
+          const [dx, dy] = ch === '(' ? [-1, 0] : ch === ')' ? [1, 0] : ch === 'u' ? [0, -1] : [0, 1];
+          c.drawLine(cx - dx * 2.5, cy - dy * 2.5, cx + dx * 2.5, cy + dy * 2.5, P.wind);
+          c.drawLine(cx + dx * 2.5, cy + dy * 2.5, cx + dx * 0.5 - dy * 1.5, cy + dy * 0.5 + dx * 1.5, P.wind);
+          c.drawLine(cx + dx * 2.5, cy + dy * 2.5, cx + dx * 0.5 + dy * 1.5, cy + dy * 0.5 - dx * 1.5, P.wind);
         } else if (ch >= '1' && ch <= '9') {
           P.portal.setColor(Skia.Color(PORTAL_COLORS[(Number(ch) - 1) % PORTAL_COLORS.length]));
           c.drawCircle(cx, cy, 3.4, P.portal);
@@ -159,6 +184,13 @@ export function buildEditorPicture(level: LevelDef): SkPicture {
   }
   c.drawPath(spikes.detach(), P.spike);
   for (const r of level.rooms) for (const s of r.saws ?? []) drawSawDef(c, s, r.x * TILE, r.y * TILE);
+  for (const r of level.rooms)
+    for (const p of r.platforms ?? []) {
+      const pts = p.points.map(([x, y]) => [(r.x + x) * TILE, (r.y + y) * TILE]);
+      for (let i = 0; i < pts.length - 1; i++)
+        c.drawLine(pts[i][0] + TILE / 2, pts[i][1] + TILE / 2, pts[i + 1][0] + TILE / 2, pts[i + 1][1] + TILE / 2, P.platPath);
+      pts.forEach(([x, y], i) => c.drawRect(Skia.XYWHRect(x, y, p.w * TILE, TILE), i === 0 ? P.plat : P.platGhost));
+    }
   for (const r of level.rooms) {
     const rr = roomRect(r);
     c.drawRect(Skia.XYWHRect(rr.x * TILE, rr.y * TILE, rr.w * TILE, rr.h * TILE), P.roomEdge);
@@ -180,6 +212,7 @@ export interface EditorFrame {
   font: SkFont | null;
   cursor: [number, number] | null;
   sawDrag: [number, number, number, number] | null;
+  platformDrag?: boolean;
   selection?: TileRect | null;
   pastePreview?: TileRect | null;
 }
@@ -201,7 +234,13 @@ export function renderEditorFrame(f: EditorFrame): SkPicture {
     for (let x = x0; x <= x1; x++) c.drawLine(x * TILE, y0 * TILE, x * TILE, y1 * TILE, P.grid);
     for (let y = y0; y <= y1; y++) c.drawLine(x0 * TILE, y * TILE, x1 * TILE, y * TILE, P.grid);
   }
-  if (f.sawDrag) {
+  if (f.sawDrag && f.platformDrag) {
+    const [ax, ay, bx0, by0] = f.sawDrag;
+    const [bx, by] = ax === bx0 && ay === by0 ? [ax + 6, ay] : [bx0, by0];
+    c.drawLine((ax + 0.5) * TILE, (ay + 0.5) * TILE, (bx + 0.5) * TILE, (by + 0.5) * TILE, P.platPath);
+    c.drawRect(Skia.XYWHRect(ax * TILE, ay * TILE, PLATFORM_W * TILE, TILE), P.plat);
+    c.drawRect(Skia.XYWHRect(bx * TILE, by * TILE, PLATFORM_W * TILE, TILE), P.platGhost);
+  } else if (f.sawDrag) {
     const [ax, ay, bx, by] = f.sawDrag;
     const p = (v: number) => (v + 0.5) * TILE;
     if (ax !== bx || ay !== by) c.drawLine(p(ax), p(ay), p(bx), p(by), P.sawPath);

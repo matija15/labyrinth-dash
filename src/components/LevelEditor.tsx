@@ -15,7 +15,7 @@ import { DEV_LEVELS, RELEASE_LEVELS } from '../levels';
 import type { LevelDef } from '../types';
 import { EditorController, type EditorSnapshot } from './editorController';
 import { buildEditorPicture, renderEditorFrame } from './editorRenderer';
-import { COLORS } from './renderer';
+import { COLORS, MECH } from './renderer';
 
 interface Props {
   /** False while a playtest covers the editor (disables keyboard / wheel shortcuts). */
@@ -35,6 +35,15 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: 'G', label: 'Exit Flag', color: COLORS.goal },
   { tool: '=', label: 'Crumble', color: COLORS.crumble },
   { tool: 'J', label: 'Jump Pad', color: COLORS.pad },
+  { tool: '-', label: 'One-Way', color: COLORS.solidEdge },
+  { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
+  { tool: '[', label: 'Switch A', color: MECH.switchA },
+  { tool: ']', label: 'Switch B', color: MECH.switchB },
+  { tool: '*', label: 'Crystal', color: MECH.crystal },
+  { tool: ')', label: 'Wind →', color: MECH.wind },
+  { tool: '(', label: 'Wind ←', color: MECH.wind },
+  { tool: 'u', label: 'Wind ↑', color: MECH.wind },
+  { tool: 'n', label: 'Wind ↓', color: MECH.wind },
   { tool: 'erase', label: 'Eraser', color: COLORS.dim },
   { tool: 'select', label: 'Select', color: COLORS.player },
   { tool: 'paste', label: 'Paste', color: COLORS.goal },
@@ -46,6 +55,15 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
 const HINTS: Partial<Record<EditorTool, string>> = {
   '^': 'Spikes point away from the wall they touch',
   saw: 'Drag to set a saw path · tap for an orbiting saw',
+  platform: 'Drag to set where a 3-wide moving platform goes · tap for one sliding 6 tiles right',
+  '-': 'Land on it from above · jump up through it · dash straight down to drop through',
+  '[': 'Solid at the start · every dash swaps Switch A and Switch B',
+  ']': 'Solid after the first dash · every dash swaps Switch A and Switch B',
+  '*': 'Refills two dashes (comes back after 3.5 s)',
+  ')': 'Wind pushes the player · press I again to turn it',
+  '(': 'Wind pushes the player · press I again to turn it',
+  u: 'Up-draft lifts the player · press I again to turn it',
+  n: 'Down-draft pushes the player down · press I again to turn it',
   S: 'Every room needs a spawn (checkpoint) · playtest starts at the first room’s',
   G: 'One exit flag per level',
   erase: 'Drag to erase tiles and saws',
@@ -57,7 +75,9 @@ const HINTS: Partial<Record<EditorTool, string>> = {
 };
 
 /** Tools that Fill can paint across a selection. */
-const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', 'erase']);
+const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', '-', '[', ']', '*', ')', '(', 'u', 'n', 'erase']);
+/** Pressing the wind hotkey again turns the wind: → ↑ ← ↓. */
+const WIND_TOOLS: EditorTool[] = [')', 'u', '(', 'n'];
 
 /** Zoom is relative to the default view (100% shows 3/4 of a room's height). */
 const BASE_ZOOM = 0.75;
@@ -129,7 +149,7 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     return renderEditorFrame({
       level: snap.level, content, width: size.width, height: size.height, scale,
       camX: snap.camX, camY: snap.camY, grid, font, cursor: snap.cursor, sawDrag: snap.sawDrag,
-      selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
+      platformDrag: snap.platformDrag, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
     });
   }, [content, size, scale, grid, font, snap, tool]);
 
@@ -203,7 +223,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
       zoomTo(zoom / ZOOM_STEP);
     } else {
       const t = toolForKey(e.key);
-      if (t) pickTool(t);
+      const w = WIND_TOOLS.indexOf(tool);
+      if (t === ')' && w >= 0) pickTool(WIND_TOOLS[(w + 1) % WIND_TOOLS.length]);
+      else if (t) pickTool(t);
     }
   });
   const onWheel = useEffectEvent((e: WheelEvent) => {

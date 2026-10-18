@@ -1,6 +1,6 @@
 import { TILE } from '../engine/constants';
 import {
-  ROOM_H, ROOM_W, addSaw, blankLevel, clearRect, copyRect, deleteRoomAt, fillRect, levelBounds, lineTiles, nearestRoom,
+  ROOM_H, ROOM_W, addPlatform, addSaw, blankLevel, clearRect, copyRect, deleteRoomAt, fillRect, levelBounds, lineTiles, nearestRoom,
   normRect, paintTile, pasteClip, slugify, type Clip, type EditorTool, type TileRect,
 } from '../engine/editor';
 import type { LevelDef } from '../types';
@@ -13,6 +13,8 @@ export interface EditorSnapshot {
   camY: number;
   cursor: [number, number] | null;
   sawDrag: [number, number, number, number] | null;
+  /** The drag above places a moving platform instead of a saw. */
+  platformDrag: boolean;
   undoCount: number;
   message: string | null;
   selection: TileRect | null;
@@ -66,7 +68,7 @@ export class EditorController {
   snapshot(): EditorSnapshot {
     return {
       level: this.level, version: this.version, camX: this.cam.x, camY: this.cam.y, cursor: this.cursor,
-      sawDrag: this.sawDrag, undoCount: this.undoStack.length, message: this.message, selection: this.selection,
+      sawDrag: this.sawDrag, platformDrag: this.tool === 'platform', undoCount: this.undoStack.length, message: this.message, selection: this.selection,
       pastePreview: this.clip && this.pasteAt ? { x: this.pasteAt[0], y: this.pasteAt[1], w: this.clip.w, h: this.clip.h } : null,
       hasClip: !!this.clip,
     };
@@ -219,7 +221,7 @@ export class EditorController {
         this.stroke = { kind: 'paste', before, at: t };
         this.pasteAt = t;
       }
-    } else if (tool === 'saw') {
+    } else if (tool === 'saw' || tool === 'platform') {
       this.stroke = { kind: 'saw', before, start: t, end: t };
       this.sawDrag = [t[0], t[1], t[0], t[1]];
     } else if (tool === 'room-' || tool === 'room+') {
@@ -280,8 +282,9 @@ export class EditorController {
     if (s.kind === 'paint' && s.changed) this.pushUndo(s.before);
     else if (s.kind === 'paste' && this.clip) edited = pasteClip(this.level, this.clip, s.at[0], s.at[1]);
     else if (s.kind === 'saw') {
-      edited = addSaw(this.level, s.start[0], s.start[1], s.end[0], s.end[1]);
-      if (!edited) this.message = 'No room fits there for a saw';
+      const plat = this.tool === 'platform';
+      edited = (plat ? addPlatform : addSaw)(this.level, s.start[0], s.start[1], s.end[0], s.end[1]);
+      if (!edited) this.message = `No room fits there for a ${plat ? 'platform' : 'saw'}`;
     } else if (s.kind === 'room') {
       const del = this.tool === 'room-';
       edited = del

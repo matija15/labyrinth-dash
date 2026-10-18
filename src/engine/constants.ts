@@ -42,6 +42,14 @@ export const PAD_SPEED = -270;
 export const CORNER_CORRECTION = 3;
 
 export const ORB_RESPAWN = 2.5;
+export const CRYSTAL_RESPAWN = 3.5;
+/** Horizontal wind: extra drift in px/s on top of the player's own speed. */
+export const WIND_PUSH = 55;
+/** Up-draft acceleration against gravity, and the fastest it lifts you. */
+export const UPDRAFT_ACCEL = 1500;
+export const UPDRAFT_MAX = -110;
+/** Down-draft: extra downward drift in px/s. */
+export const DOWNDRAFT_PUSH = 45;
 export const CRUMBLE_SHAKE = 0.45;
 export const CRUMBLE_RESPAWN = 2.2;
 export const PORTAL_RADIUS = 4;
