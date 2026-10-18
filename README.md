@@ -113,6 +113,12 @@ hitboxes and physics are identical in every skin.
   - Every slot is optional and falls back to the vector drawing.
   - Draw `spike` pointing up (it's rotated for walls and ceilings) and `player` facing right (it's mirrored).
   - `assets/skins/pixel/` is a working example.
+- **Animated player:** an `art` set can make the player slot a sprite sheet (see `SHEETS` in
+  `src/skins/sheets.ts`). It has one row per animation (`idle`, `run`, `dash`, `air` = rising/falling
+  frames). The character faces right and stands on the bottom of each cell. `density` is sheet
+  pixels per world pixel (the hitbox is 6×6 world px). Red Hood (`assets/skins/hood/`) is built
+  from the idle GIF by `python3 tools/hood_sprites.py`; to use hand-drawn frames, replace `sheet.png`
+  and update `HOOD_SHEET`.
 - **Unlocks:** `{ type: 'free' }`, `{ type: 'clears', count }` (release levels cleared),
   `{ type: 'deaths', count }` (total deaths) or `{ type: 'ad' }`.
 - **Ads:** `showRewardedAd()` in `src/engine/ads.ts` is a stub that grants the unlock immediately.
