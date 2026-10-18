@@ -1,12 +1,14 @@
 import {
-  BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, StrokeCap, TileMode,
-  type SkCanvas, type SkFont, type SkPaint, type SkPath, type SkPicture,
+  BlendMode, BlurStyle, ClipOp, FilterMode, MipmapMode, PaintStyle, Skia, StrokeCap, TileMode,
+  type SkCanvas, type SkFont, type SkImage, type SkPaint, type SkPath, type SkPicture,
 } from '@shopify/react-native-skia';
 import { PARTICLE_COLORS, type Game } from '../engine/game';
 import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
 import { T } from '../engine/world';
 import { formatTime } from '../engine/save';
 import type { TouchController } from '../engine/input';
+import type { Look } from '../engine/skins';
+import type { ArtImages } from '../skins/art';
 
 export const COLORS = {
   bg: '#06070d',
@@ -29,7 +31,7 @@ export const COLORS = {
 const PORTAL_COLORS = ['#ff4dd2', '#4d9dff', '#ffe14d', '#4dffe1', '#ff8a4d', '#a14dff', '#4dff6a', '#ff4d6a', '#4dd2ff'];
 
 type Paints = ReturnType<typeof makePaints>;
-let paints: Paints | null = null;
+let paints: { key: string; P: Paints } | null = null;
 
 function paint(color: string, opts: { stroke?: number; blur?: number; alpha?: number; blend?: BlendMode } = {}) {
   const p = Skia.Paint();
@@ -46,11 +48,14 @@ function paint(color: string, opts: { stroke?: number; blur?: number; alpha?: nu
   return p;
 }
 
-function makePaints() {
+function makePaints({ theme: T, player: PL }: Look) {
+  const COLORS = { ...T, player: PL.color };
   return {
     solid: paint(COLORS.solid),
     edge: paint(COLORS.solidEdge, { stroke: 0.6 }),
-    grid: paint('#1a2140', { stroke: 0.25, alpha: 0.5 }),
+    topEdge: paint(COLORS.solidEdge, { stroke: 1.2 }),
+    mortar: paint(COLORS.solidEdge, { stroke: 0.4, alpha: 0.55 }),
+    grid: paint(COLORS.grid, { stroke: 0.25, alpha: 0.5 }),
     spike: paint(COLORS.spike),
     spikeGlow: paint(COLORS.spike, { blur: 2.5, alpha: 0.55 }),
     crumble: paint(COLORS.crumble),
@@ -74,12 +79,14 @@ function makePaints() {
     portalGlow: paint('#ffffff', { blur: 4, alpha: 0.6 }),
     player: paint(COLORS.player),
     playerGlow: paint(COLORS.player, { blur: 4, alpha: 0.8 }),
+    playerStroke: paint(COLORS.player, { stroke: 0.9 }),
+    art: paint('#ffffff'),
     ghost: paint(COLORS.player),
     particle: paint('#ffffff'),
     light: paint('#ffffff', { blend: BlendMode.Plus }),
     flash: paint('#ffffff'),
-    hudText: paint(COLORS.text),
-    hudDim: paint(COLORS.dim),
+    hudText: paint(UI.text),
+    hudDim: paint(UI.dim),
     hudShadow: paint('#000000', { alpha: 0.55 }),
     pad1: paint('#ffffff', { alpha: 0.05 }),
     pad1On: paint(COLORS.player, { alpha: 0.16 }),
@@ -89,13 +96,31 @@ function makePaints() {
   };
 }
 
-const getPaints = () => (paints ??= makePaints());
+const UI = { text: '#e8ecff', dim: '#7c86b0' };
+
+const getPaints = (look: Look) => {
+  const key = `${look.theme.id}/${look.player.id}`;
+  if (paints?.key !== key) paints = { key, P: makePaints(look) };
+  return paints.P;
+};
+
+const SPIKE_SHAPES = { sharp: { n: 2, h: 5 }, chunky: { n: 1, h: 6 }, needle: { n: 3, h: 6 } } as const;
+const SPIKE_ANGLE = { [T.SpikeUp]: 0, [T.SpikeRight]: 90, [T.SpikeDown]: 180, [T.SpikeLeft]: 270 } as Record<number, number>;
+
+/** Draws pixel art into a world rect (nearest-neighbour, so 16×16 art stays crisp). */
+function drawArt(c: SkCanvas, img: SkImage, x: number, y: number, w: number, h: number, p: SkPaint | null = null) {
+  c.drawImageRectOptions(
+    img, Skia.XYWHRect(0, 0, img.width(), img.height()), Skia.XYWHRect(x, y, w, h), FilterMode.Nearest, MipmapMode.None, p,
+  );
+}
 
 const solidish = (t: T) => t === T.Solid || t === T.Void;
 
 /** Static geometry (walls, spikes) is recorded once per level into a reusable picture. */
-export function buildStaticPicture(game: Game): SkPicture {
-  const P = getPaints();
+export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}): SkPicture {
+  const P = getPaints(look);
+  const { blocks } = look.theme;
+  const spikeShape = SPIKE_SHAPES[look.theme.spikes];
   const { world } = game;
   const rec = Skia.PictureRecorder();
   const c = rec.beginRecording(Skia.XYWHRect(0, 0, world.w * TILE, world.h * TILE));
@@ -124,18 +149,43 @@ export function buildStaticPicture(game: Game): SkPicture {
           for (let dy = -2; dy <= 2 && !near; dy++)
             for (let dx = -2; dx <= 2 && !near; dx++) if (!solidish(at(tx + dx, ty + dy))) near = true;
         if (!near) continue;
+        if (art.solid) {
+          drawArt(c, art.solid, x, y, TILE, TILE);
+          continue;
+        }
         c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.solid);
+        if (blocks === 'brick') {
+          const o = ty % 2 ? 2 : 6;
+          c.drawLine(x, y + 4, x + TILE, y + 4, P.mortar);
+          c.drawLine(x + o, y, x + o, y + 4, P.mortar);
+          c.drawLine(x + ((o + 4) % 8), y + 4, x + ((o + 4) % 8), y + 8, P.mortar);
+        }
+        if (blocks === 'flat') {
+          if (exposedU) c.drawLine(x, y + 0.6, x + TILE, y + 0.6, P.topEdge);
+          continue;
+        }
         if (exposedU) c.drawLine(x, y + 0.3, x + TILE, y + 0.3, P.edge);
         if (exposedD) c.drawLine(x, y + TILE - 0.3, x + TILE, y + TILE - 0.3, P.edge);
         if (exposedL) c.drawLine(x + 0.3, y, x + 0.3, y + TILE, P.edge);
         if (exposedR) c.drawLine(x + TILE - 0.3, y, x + TILE - 0.3, y + TILE, P.edge);
       } else if (t >= T.SpikeUp && t <= T.SpikeRight) {
-        for (let k = 0; k < 2; k++) {
-          const o = k * 4;
-          if (t === T.SpikeUp) { spikes.moveTo(x + o, y + 8); spikes.lineTo(x + o + 2, y + 3); spikes.lineTo(x + o + 4, y + 8); }
-          if (t === T.SpikeDown) { spikes.moveTo(x + o, y); spikes.lineTo(x + o + 2, y + 5); spikes.lineTo(x + o + 4, y); }
-          if (t === T.SpikeLeft) { spikes.moveTo(x + 8, y + o); spikes.lineTo(x + 3, y + o + 2); spikes.lineTo(x + 8, y + o + 4); }
-          if (t === T.SpikeRight) { spikes.moveTo(x, y + o); spikes.lineTo(x + 5, y + o + 2); spikes.lineTo(x, y + o + 4); }
+        if (art.spike) {
+          c.save();
+          c.rotate(SPIKE_ANGLE[t], x + TILE / 2, y + TILE / 2);
+          drawArt(c, art.spike, x, y, TILE, TILE);
+          c.restore();
+          continue;
+        }
+        const { n, h } = spikeShape;
+        const bw = TILE / n;
+        const tip = 8 - h;
+        for (let k = 0; k < n; k++) {
+          const o = k * bw;
+          const m = o + bw / 2;
+          if (t === T.SpikeUp) { spikes.moveTo(x + o, y + 8); spikes.lineTo(x + m, y + tip); spikes.lineTo(x + o + bw, y + 8); }
+          if (t === T.SpikeDown) { spikes.moveTo(x + o, y); spikes.lineTo(x + m, y + h); spikes.lineTo(x + o + bw, y); }
+          if (t === T.SpikeLeft) { spikes.moveTo(x + 8, y + o); spikes.lineTo(x + tip, y + m); spikes.lineTo(x + 8, y + o + bw); }
+          if (t === T.SpikeRight) { spikes.moveTo(x, y + o); spikes.lineTo(x + h, y + m); spikes.lineTo(x, y + o + bw); }
           spikes.close();
         }
       }
@@ -157,6 +207,8 @@ export interface FrameContext {
   touch: TouchController;
   insets: { left: number; right: number; top: number };
   now: number;
+  look: Look;
+  art: ArtImages;
 }
 
 const hexWithAlpha = (hex: string, a: number) => {
@@ -181,7 +233,7 @@ const getSawPath = () => {
 };
 
 function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
-  const { game } = f;
+  const { game, art } = f;
   const { world } = game;
   const t = game.worldTime;
   c.drawPicture(f.staticPic);
@@ -193,6 +245,7 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     const jx = s === 1 ? Math.sin(t * 80 + i) * 0.6 : 0;
     const x = cr.tx * TILE + jx;
     const y = cr.ty * TILE;
+    if (art.crumble) return drawArt(c, art.crumble, x, y, TILE, TILE);
     c.drawRect(Skia.XYWHRect(x + 0.3, y + 0.3, TILE - 0.6, TILE * 0.6), P.crumble);
     c.drawLine(x + 2, y + 0.5, x + 4, y + 4, P.crumbleLine);
     c.drawLine(x + 6, y + 0.5, x + 5, y + 3.5, P.crumbleLine);
@@ -204,6 +257,10 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     for (const i of d.tiles) {
       const x = (i % world.w) * TILE;
       const y = Math.floor(i / world.w) * TILE;
+      if (art.door) {
+        drawArt(c, art.door, x, y, TILE, TILE);
+        continue;
+      }
       c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.doorGlow);
       c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.door);
       c.drawRect(Skia.XYWHRect(x + 3, y + 2.5, 2, 3), P.doorLine);
@@ -215,6 +272,7 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     const x = pad.tx * TILE;
     const y = pad.ty * TILE;
     const press = game.padFlash[i] > 0 ? 1.5 : 0;
+    if (art.pad) return drawArt(c, art.pad, x, y + press * 0.3, TILE, TILE);
     c.drawRect(Skia.XYWHRect(x + 0.5, y + 5 + press * 0.3, TILE - 1, 3 - press * 0.3), P.padGlow);
     c.drawRect(Skia.XYWHRect(x + 0.5, y + 5 + press * 0.3, TILE - 1, 3 - press * 0.3), P.pad);
     c.drawRect(Skia.XYWHRect(x + 1.5, y + 4 - (press ? 0 : 1), TILE - 3, 1), P.pad);
@@ -226,9 +284,12 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     const bob = Math.sin(t * 3 + i) * 1.2;
     c.save();
     c.translate(k.x, k.y + bob);
-    c.rotate(45 + Math.sin(t * 2) * 10, 0, 0);
-    c.drawRect(Skia.XYWHRect(-2.5, -2.5, 5, 5), P.keyGlow);
-    c.drawRect(Skia.XYWHRect(-2, -2, 4, 4), P.key);
+    if (art.key) drawArt(c, art.key, -TILE / 2, -TILE / 2, TILE, TILE);
+    else {
+      c.rotate(45 + Math.sin(t * 2) * 10, 0, 0);
+      c.drawRect(Skia.XYWHRect(-2.5, -2.5, 5, 5), P.keyGlow);
+      c.drawRect(Skia.XYWHRect(-2, -2, 4, 4), P.key);
+    }
     c.restore();
   });
 
@@ -239,6 +300,7 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
       return;
     }
     const pulse = 2.6 + Math.sin(t * 5 + i) * 0.4;
+    if (art.orb) return drawArt(c, art.orb, o.x - pulse * 1.5, o.y - pulse * 1.5, pulse * 3, pulse * 3);
     c.drawCircle(o.x, o.y, pulse + 1.5, P.orbGlow);
     c.drawCircle(o.x, o.y, pulse, P.orb);
   });
@@ -261,6 +323,10 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
   if (world.goal) {
     const g = world.goal;
     const bob = Math.sin(t * 2.5) * 1.5;
+    if (art.goal) {
+      drawArt(c, art.goal, g.x - 5, g.y - 5 + bob, 10, 10);
+      return;
+    }
     const b = Skia.PathBuilder.Make();
     b.moveTo(g.x, g.y - 5 + bob);
     b.lineTo(g.x + 3.5, g.y + bob);
@@ -284,6 +350,11 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
       c.translate(s.x, s.y);
       c.drawCircle(0, 0, s.r * 1.05, P.sawGlow);
       c.rotate((s.angle * 57.3) % 360, 0, 0);
+      if (art.saw) {
+        drawArt(c, art.saw, -s.r, -s.r, s.r * 2, s.r * 2);
+        c.restore();
+        continue;
+      }
       c.scale(s.r, s.r);
       c.drawPath(sp, P.saw);
       c.drawCircle(0, 0, 0.3, P.sawCore);
@@ -292,13 +363,13 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
   }
 }
 
-function drawPlayer(c: SkCanvas, game: Game, P: Paints) {
+function drawPlayer(c: SkCanvas, game: Game, P: Paints, { player: skin }: Look, art: ArtImages) {
   const p = game.player;
   const ready = p.dashes > 0;
-  const color = ready ? COLORS.player : COLORS.playerSpent;
+  const color = ready ? skin.color : skin.spentColor;
 
   for (const g of game.ghosts) {
-    P.ghost.setColor(hexWithAlpha(COLORS.player, Math.max(0, g.life / 0.28) * 0.45));
+    P.ghost.setColor(hexWithAlpha(skin.trail ?? skin.color, Math.max(0, g.life / 0.28) * 0.45));
     c.drawRect(Skia.XYWHRect(g.x, g.y, PLAYER_W, PLAYER_H), P.ghost);
   }
   if (game.phase === 'dead') return;
@@ -314,10 +385,31 @@ function drawPlayer(c: SkCanvas, game: Game, P: Paints) {
   const w = PLAYER_W * p.scaleX;
   const h = PLAYER_H * p.scaleY;
   const rect = Skia.XYWHRect(cx - w / 2, p.y + PLAYER_H - h, w, h);
+  if (art.player) {
+    // Art is drawn a bit larger than the 6×6 hitbox so 16×16 sprites read well; it faces right.
+    const aw = w * (TILE / PLAYER_W);
+    const ah = h * (TILE / PLAYER_H);
+    P.art.setAlphaf(ready ? 1 : 0.5);
+    c.save();
+    if (p.facing < 0) c.scale(-1, 1);
+    const ax = p.facing < 0 ? -(cx + aw / 2) : cx - aw / 2;
+    drawArt(c, art.player, ax, p.y + PLAYER_H - ah, aw, ah, P.art);
+    c.restore();
+    return;
+  }
   P.playerGlow.setColor(Skia.Color(color));
   P.player.setColor(Skia.Color(color));
+  P.playerStroke.setColor(Skia.Color(color));
   c.drawRect(rect, P.playerGlow);
-  c.drawRRect(Skia.RRectXY(rect, 1, 1), P.player);
+  if (skin.shape === 'hollow') {
+    P.player.setAlphaf(0.25);
+    c.drawRRect(Skia.RRectXY(rect, 1, 1), P.player);
+    P.player.setAlphaf(1);
+    c.drawRRect(Skia.RRectXY(Skia.XYWHRect(rect.x + 0.45, rect.y + 0.45, w - 0.9, h - 0.9), 1, 1), P.playerStroke);
+  } else {
+    const r = skin.shape === 'round' ? Math.min(w, h) * 0.45 : 1;
+    c.drawRRect(Skia.RRectXY(rect, r, r), P.player);
+  }
   // eye
   P.hudShadow.setAlphaf(0.7);
   c.drawRect(Skia.XYWHRect(cx + p.facing * 1.2 - 0.6, p.y + PLAYER_H - h + h * 0.3, 1.2, 1.6), P.hudShadow);
@@ -343,7 +435,7 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   text(c, formatTime(game.time * 1000), x0, y0, font, P.hudText, P.hudShadow);
   text(c, `DEATHS ${game.deaths}`, x0, y0 + 20, smallFont, P.hudDim, P.hudShadow);
   if (game.heldKeys > 0) {
-    P.key.setColor(Skia.Color(COLORS.key));
+    P.key.setColor(Skia.Color(f.look.theme.key));
     text(c, `KEY x${game.heldKeys}`, x0 + 110, y0 + 20, smallFont, P.key, P.hudShadow);
   }
   const roomLabel = `${game.level.name.toUpperCase()}  ${game.world.rooms.indexOf(game.room) + 1}/${game.world.rooms.length}`;
@@ -370,11 +462,11 @@ function textWidth(font: SkFont, s: string) {
 
 /** Draw one full frame (world + effects + HUD) into a picture. */
 export function renderFrame(f: FrameContext): SkPicture {
-  const P = getPaints();
+  const P = getPaints(f.look);
   const { game, width, height, scale } = f;
   const rec = Skia.PictureRecorder();
   const c = rec.beginRecording(Skia.XYWHRect(0, 0, width, height));
-  c.drawColor(Skia.Color(COLORS.bg));
+  c.drawColor(Skia.Color(f.look.theme.bg));
 
   c.save();
   const shake = game.shake;
@@ -384,7 +476,7 @@ export function renderFrame(f: FrameContext): SkPicture {
   c.translate(-game.camera.x + sx, -game.camera.y + sy);
   c.clipRect(Skia.XYWHRect(game.camera.x - 4, game.camera.y - 4, game.view.w + 8, game.view.h + 8), ClipOp.Intersect, false);
   drawWorld(c, f, P);
-  drawPlayer(c, game, P);
+  drawPlayer(c, game, P, f.look, f.art);
   drawParticles(c, game, P);
   c.restore();
 

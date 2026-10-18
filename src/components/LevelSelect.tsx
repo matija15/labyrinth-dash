@@ -14,13 +14,14 @@ interface Props {
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
   onEditor: () => void;
+  onSkins: () => void;
   /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
   devTools: boolean;
   pack: LevelPack;
   onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor, devTools, pack, onPack }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor, onSkins, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
   const problems = useMemo(() => levels.map((l) => validateLevel(l)[0] ?? null), [levels]);
@@ -35,6 +36,14 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           <Text style={styles.tag}>precision platformer · {save.totalDeaths} total deaths</Text>
         </View>
         <View style={styles.headerRight}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Skins"
+            onPress={onSkins}
+            style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.controlsText}>SKINS</Text>
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Toggle control scheme"

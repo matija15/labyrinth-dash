@@ -9,6 +9,8 @@ import { Game } from '../engine/game';
 import { TouchController } from '../engine/input';
 import { GameLoop } from '../engine/loop';
 import { recordClear, recordDeaths, formatTime } from '../engine/save';
+import { selectedLook } from '../engine/skins';
+import { artReady, useLookImages } from '../skins/art';
 import type { GameEvent, LevelDef, SaveData } from '../types';
 import { buildStaticPicture, COLORS, renderFrame } from './renderer';
 import { useKeyboardControls } from './useKeyboardControls';
@@ -42,7 +44,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const smallFont = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 12);
   const autoRun = (save.controls ?? 'auto') === 'auto';
   const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest }), [level, autoRun, playtest]);
-  const staticPic = useMemo(() => buildStaticPicture(game), [game]);
+  const { player: playerSkin, theme } = selectedLook(save);
+  const look = useMemo(() => ({ player: playerSkin, theme }), [playerSkin, theme]);
+  const art = useLookImages(look);
+  const ready = artReady(look, art);
+  const staticPic = useMemo(() => buildStaticPicture(game, look, ready ? art : {}), [game, look, ready, art]);
   const touch = useMemo(() => {
     const t = new TouchController();
     t.autoRun = autoRun;
@@ -54,11 +60,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const [result, setResult] = useState<Result | null>(null);
 
   const saveRef = useRef(save);
-  const live = useRef({ size, font, smallFont, insets, onSave, onExit });
+  const live = useRef({ size, font, smallFont, insets, onSave, onExit, look, art, staticPic });
   const pausedRef = useRef(false);
   useLayoutEffect(() => {
     saveRef.current = save;
-    live.current = { size, font, smallFont, insets, onSave, onExit };
+    live.current = { size, font, smallFont, insets, onSave, onExit, look, art, staticPic };
   });
 
   const togglePause = useCallback(() => {
@@ -99,7 +105,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         }
       },
       () => {
-        const { size: s, font: f, smallFont: sf, insets: ins } = live.current;
+        const { size: s, font: f, smallFont: sf, insets: ins, look: lk, art: images, staticPic: pic } = live.current;
         if (!s.width) return;
         if (s.width !== lastW || s.height !== lastH) {
           scale = game.setViewport(s.width, s.height);
@@ -109,8 +115,8 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         }
         setPicture(
           renderFrame({
-            game, staticPic, width: s.width, height: s.height, scale, font: f, smallFont: sf, touch,
-            insets: { left: ins.left, right: ins.right, top: ins.top }, now: performance.now(),
+            game, staticPic: pic, width: s.width, height: s.height, scale, font: f, smallFont: sf, touch,
+            insets: { left: ins.left, right: ins.right, top: ins.top }, now: performance.now(), look: lk, art: images,
           }),
         );
       },
@@ -120,7 +126,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
       loop.stop();
       if (exitTimer) clearTimeout(exitTimer);
     };
-  }, [game, level.id, playtest, staticPic, touch]);
+  }, [game, level.id, playtest, touch]);
 
   useEffect(() => {
     pausedRef.current = paused || result !== null;
