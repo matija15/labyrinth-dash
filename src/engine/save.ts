@@ -21,7 +21,7 @@ export const isAssisted = (a: AssistSettings | null | undefined): a is AssistSet
   !!a && (a.speed < 1 || a.infiniteDash || a.invincible);
 
 /** An assisted clear unlocks the next level but sets no best time and keeps the level marked as assisted. */
-export function recordClear(save: SaveData, levelId: string, ms: number, assisted = false): { save: SaveData; newBest: boolean } {
+export function recordClear(save: SaveData, levelId: string, ms: number, assisted = false, deaths?: number): { save: SaveData; newBest: boolean } {
   const rec = save.levels[levelId] ?? emptyRecord();
   if (assisted) {
     const level = { ...rec, completed: true, clears: rec.clears + 1, assisted: rec.completed ? !!rec.assisted : true };
@@ -34,7 +34,9 @@ export function recordClear(save: SaveData, levelId: string, ms: number, assiste
       ...save,
       levels: {
         ...save.levels,
-        [levelId]: { ...rec, completed: true, clears: rec.clears + 1, bestMs: newBest ? ms : rec.bestMs, assisted: false },
+        [levelId]: { ...rec, completed: true, clears: rec.clears + 1, bestMs: newBest ? ms : rec.bestMs, assisted: false,
+          ...(deaths !== undefined ? { fewestDeaths: Math.min(deaths, rec.fewestDeaths ?? Infinity) } : {}),
+        },
       },
     },
   };

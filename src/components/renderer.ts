@@ -234,6 +234,8 @@ export interface FrameContext {
   now: number;
   look: Look;
   art: ArtImages;
+  /** Best-run ghost position (world px), if one is shown. */
+  ghost?: { x: number; y: number } | null;
 }
 
 const hexWithAlpha = (hex: string, a: number) => {
@@ -603,6 +605,10 @@ export function renderFrame(f: FrameContext): SkPicture {
   c.translate(-game.camera.x + sx, -game.camera.y + sy);
   c.clipRect(Skia.XYWHRect(game.camera.x - 4, game.camera.y - 4, game.view.w + 8, game.view.h + 8), ClipOp.Intersect, false);
   drawWorld(c, f, P);
+  if (f.ghost) {
+    P.ghost.setColor(hexWithAlpha(f.look.player.color, 0.3));
+    c.drawRect(Skia.XYWHRect(f.ghost.x, f.ghost.y, PLAYER_W, PLAYER_H), P.ghost);
+  }
   drawPlayer(c, game, P, f.look, f.art);
   drawParticles(c, game, P);
   c.restore();

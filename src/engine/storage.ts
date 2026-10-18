@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LevelDef, SaveData } from '../types';
 import type { Clip } from './editor';
+import type { Ghost } from './ghost';
 import { emptySave } from './save';
 
 const KEY = '@labyrinth-dash/save/v1';
@@ -72,4 +73,19 @@ export async function loadStamps(): Promise<Stamp[]> {
 
 export function writeStamps(stamps: Stamp[]) {
   return AsyncStorage.setItem(STAMPS_KEY, JSON.stringify(stamps)).catch(() => undefined);
+}
+
+const ghostKey = (levelId: string) => `@labyrinth-dash/ghost/v1/${levelId}`;
+
+export async function loadGhost(levelId: string): Promise<Ghost | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ghostKey(levelId));
+    return raw ? (JSON.parse(raw) as Ghost) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGhost(levelId: string, ghost: Ghost) {
+  return AsyncStorage.setItem(ghostKey(levelId), JSON.stringify(ghost)).catch(() => undefined);
 }

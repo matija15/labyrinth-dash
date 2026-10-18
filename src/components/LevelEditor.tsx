@@ -409,6 +409,7 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
           sourceId={sourceId}
           onRename={(name) => ctl.rename(name)}
           onSubtitle={(sub) => ctl.setSubtitle(sub)}
+          onChapter={(ch) => ctl.setChapter(ch)}
           onSaved={(id, position) => {
             setSourceId(id);
             ctl.setMessage(`Saved ${id}.json as level ${position}`);
@@ -563,12 +564,13 @@ function ExportModal({ level, onRename, onClose }: { level: LevelDef; onRename: 
 }
 
 function SaveModal({
-  level, sourceId, onRename, onSubtitle, onSaved, onClose,
+  level, sourceId, onRename, onSubtitle, onChapter, onSaved, onClose,
 }: {
   level: LevelDef;
   sourceId: string | null;
   onRename: (name: string) => void;
   onSubtitle: (subtitle: string) => void;
+  onChapter: (chapter: string) => void;
   onSaved: (id: string, position: number) => void;
   onClose: () => void;
 }) {
@@ -609,6 +611,17 @@ function SaveModal({
           onChangeText={onSubtitle}
           style={[styles.input, { flex: 1 }]}
           placeholder="Shown under the name on level select"
+          placeholderTextColor={COLORS.dim}
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Chapter</Text>
+        <TextInput
+          value={level.chapter ?? ''}
+          onChangeText={onChapter}
+          style={[styles.input, { flex: 1 }]}
+          placeholder="e.g. Caves · empty = automatic blocks of 15"
           placeholderTextColor={COLORS.dim}
           autoCorrect={false}
         />

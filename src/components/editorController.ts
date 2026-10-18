@@ -167,6 +167,12 @@ export class EditorController {
     return nearestRoom(this.level, tx, ty);
   }
 
+  setChapter(chapter: string) {
+    if (chapter) this.level.chapter = chapter;
+    else delete this.level.chapter;
+    this.emit(true);
+  }
+
   setSubtitle(subtitle: string) {
     this.level.subtitle = subtitle;
     this.emit(true);

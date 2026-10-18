@@ -90,6 +90,7 @@ export default function App() {
               onControls={(controls) => onSave({ ...save, controls })}
               onAudio={(audio) => onSave({ ...save, audio })}
               onAssist={(assist) => onSave({ ...save, assist })}
+              onGhost={(ghost) => onSave({ ...save, ghost })}
               onReset={() => {
                 resetSave();
                 setSave(emptySave());

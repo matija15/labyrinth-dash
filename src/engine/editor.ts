@@ -493,6 +493,7 @@ export function levelToCode(level: LevelDef): string {
     `  id: ${JSON.stringify(level.id)},`,
     `  name: ${JSON.stringify(level.name)},`,
     `  subtitle: ${JSON.stringify(level.subtitle)},`,
+    ...(level.chapter ? [`  chapter: ${JSON.stringify(level.chapter)},`] : []),
     '  rooms: [',
   ];
   for (const r of level.rooms) {
@@ -593,6 +594,7 @@ export function parseLevelCode(text: string): LevelDef {
     id: typeof d.id === 'string' ? d.id : slugify(name),
     name,
     subtitle: typeof d.subtitle === 'string' ? d.subtitle : 'Made in the editor',
+    ...(typeof d.chapter === 'string' && d.chapter ? { chapter: d.chapter } : {}),
     rooms,
   };
 }

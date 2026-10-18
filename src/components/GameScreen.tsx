@@ -6,6 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import { PLAYER_H, PLAYER_W } from '../engine/constants';
+import { GhostRecorder, ghostAt, type Ghost } from '../engine/ghost';
+import { loadGhost, writeGhost } from '../engine/storage';
 import { playEventSound, setAudioPrefs, setMusicPlaying, warmUpAudio } from '../engine/audio';
 import { Game } from '../engine/game';
 import { TouchController } from '../engine/input';
@@ -54,7 +56,19 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
     return () => setMusicPlaying(false);
   }, []);
   const assist = save.assist;
+  const ghostOn = save.ghost ?? true;
+  const [bestGhost, setBestGhost] = useState<Ghost | null>(null);
+  const ghost = ghostOn && !playtest ? bestGhost : null;
+  useEffect(() => {
+    if (playtest) return;
+    let alive = true;
+    loadGhost(level.id).then((g) => alive && setBestGhost(g));
+    return () => {
+      alive = false;
+    };
+  }, [level.id, playtest]);
   const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest, assist }), [level, autoRun, playtest, assist]);
+  const recorderRef = useRef(new GhostRecorder());
   const { player: playerSkin, theme } = selectedLook(save);
   const look = useMemo(() => ({ player: playerSkin, theme }), [playerSkin, theme]);
   const art = useLookImages(look);
@@ -71,11 +85,11 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const [result, setResult] = useState<Result | null>(null);
 
   const saveRef = useRef(save);
-  const live = useRef({ size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic });
+  const live = useRef({ size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost });
   const pausedRef = useRef(false);
   useLayoutEffect(() => {
     saveRef.current = save;
-    live.current = { size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic };
+    live.current = { size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost };
   });
 
   const togglePause = useCallback(() => {
@@ -94,6 +108,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         if (pausedRef.current) return;
         loop.speed = game.assist?.speed ?? 1;
         game.step(touch.input);
+        recorderRef.current.sample(game);
         for (const e of game.drainEvents()) {
           haptic(e);
           playEventSound(e);
@@ -110,7 +125,12 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
             live.current.onSave(next);
           } else if (e.type === 'goal') {
             const ms = Math.round(game.time * 1000);
-            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms, !!game.assist);
+            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms, !!game.assist, game.deaths);
+            if (newBest) {
+              const g = recorderRef.current.finish(ms);
+              void writeGhost(level.id, g);
+              setBestGhost(g);
+            }
             saveRef.current = next;
             live.current.onSave(next);
             pausedRef.current = true;
@@ -119,7 +139,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         }
       },
       () => {
-        const { size: s, font: f, smallFont: sf, insets: ins, look: lk, art: images, staticPic: pic } = live.current;
+        const { size: s, font: f, smallFont: sf, insets: ins, look: lk, art: images, staticPic: pic, ghost: gh } = live.current;
         if (!s.width) return;
         if (s.width !== lastW || s.height !== lastH) {
           scale = game.setViewport(s.width, s.height);
@@ -129,6 +149,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
         }
         setPicture(
           renderFrame({
+          ghost: gh ? ghostAt(gh, game.time) : null,
             game, staticPic: pic, width: s.width, height: s.height, scale, font: f, smallFont: sf, touch,
             insets: { left: ins.left, right: ins.right, top: ins.top }, now: performance.now(), look: lk, art: images,
           }),

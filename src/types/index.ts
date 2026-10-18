@@ -78,6 +78,8 @@ export interface LevelDef {
   id: string;
   name: string;
   subtitle: string;
+  /** Chapter name; consecutive levels with the same name are one chapter in the level select. */
+  chapter?: string;
   rooms: RoomDef[];
 }
 
@@ -123,6 +125,8 @@ export interface LevelRecord {
   clears: number;
   /** Cleared only with assist mode on (no best time, doesn't count for skin unlocks). */
   assisted?: boolean;
+  /** Fewest deaths in an unassisted clear. */
+  fewestDeaths?: number;
 }
 
 /** Optional assist mode: slower game, unlimited dashes, no hazard deaths. */
@@ -143,6 +147,8 @@ export interface SaveData {
   /** Sound effects / music switches (absent → on). */
   audio?: { sfx?: boolean; music?: boolean };
   assist?: AssistSettings;
+  /** Show the best-run ghost (absent → on). */
+  ghost?: boolean;
   /** Equipped skin ids and ad-unlocked skins (`player:<id>` / `theme:<id>`). */
   skins?: { player?: string; theme?: string; unlocked?: string[] };
 }
