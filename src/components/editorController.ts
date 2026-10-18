@@ -43,6 +43,8 @@ export class EditorController {
   private sawDrag: [number, number, number, number] | null = null;
   private message: string | null = null;
   private undoStack: string[] = [];
+  /** True while the middle mouse button pans the map (web); pointer strokes are ignored. */
+  middlePan = false;
   private pointers = new Map<number, { x: number; y: number }>();
   private stroke: Stroke | null = null;
   private tool: EditorTool = '#';
@@ -165,6 +167,11 @@ export class EditorController {
     this.emit();
   }
 
+  /** Pans so the map follows a drag of (dx, dy) screen px. */
+  dragBy(dx: number, dy: number) {
+    this.panBy(-dx / this.scale, -dy / this.scale);
+  }
+
   /** Changes zoom keeping the world point under screen point `at` (default: the screen center) fixed. */
   rescale(nextScale: number, at?: { x: number; y: number }) {
     const ax = at?.x ?? this.width / 2;
@@ -181,6 +188,7 @@ export class EditorController {
   }
 
   down(id: number, x: number, y: number) {
+    if (this.middlePan) return;
     this.pointers.set(id, { x, y });
     if (this.pointers.size >= 2) {
       // A second finger turns any stroke into a two-finger pan and cancels its edits.
