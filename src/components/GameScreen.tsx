@@ -53,7 +53,8 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
     setMusicPlaying(true);
     return () => setMusicPlaying(false);
   }, []);
-  const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest }), [level, autoRun, playtest]);
+  const assist = save.assist;
+  const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest, assist }), [level, autoRun, playtest, assist]);
   const { player: playerSkin, theme } = selectedLook(save);
   const look = useMemo(() => ({ player: playerSkin, theme }), [playerSkin, theme]);
   const art = useLookImages(look);
@@ -91,6 +92,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
     const loop = new GameLoop(
       () => {
         if (pausedRef.current) return;
+        loop.speed = game.assist?.speed ?? 1;
         game.step(touch.input);
         for (const e of game.drainEvents()) {
           haptic(e);
@@ -108,7 +110,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
             live.current.onSave(next);
           } else if (e.type === 'goal') {
             const ms = Math.round(game.time * 1000);
-            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms);
+            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms, !!game.assist);
             saveRef.current = next;
             live.current.onSave(next);
             pausedRef.current = true;

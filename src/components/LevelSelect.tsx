@@ -1,10 +1,10 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo } from 'react';
-import { formatTime } from '../engine/save';
+import { ASSIST_OFF, ASSIST_SPEEDS, formatTime } from '../engine/save';
 import { validateLevel } from '../engine/world';
 import type { LevelPack } from '../levels';
-import type { ControlScheme, LevelDef, SaveData } from '../types';
+import type { AssistSettings, ControlScheme, LevelDef, SaveData } from '../types';
 import { COLORS } from './renderer';
 
 interface Props {
@@ -14,6 +14,7 @@ interface Props {
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
   onAudio: (audio: { sfx: boolean; music: boolean }) => void;
+  onAssist: (assist: AssistSettings) => void;
   onEditor: () => void;
   onSkins: () => void;
   /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
@@ -22,11 +23,13 @@ interface Props {
   onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onEditor, onSkins, devTools, pack, onPack }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onAssist, onEditor, onSkins, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
   const sfx = save.audio?.sfx ?? true;
   const music = save.audio?.music ?? true;
+  const assist = save.assist ?? ASSIST_OFF;
+  const nextSpeed = ASSIST_SPEEDS[(ASSIST_SPEEDS.indexOf(assist.speed) + 1) % ASSIST_SPEEDS.length];
   const problems = useMemo(() => levels.map((l) => validateLevel(l)[0] ?? null), [levels]);
   return (
     <ScrollView
@@ -71,6 +74,32 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
               style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
             >
               <Text style={styles.controlsText}>MUSIC · {music ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.devRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist game speed"
+              onPress={() => onAssist({ ...assist, speed: nextSpeed })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>ASSIST SPEED · {Math.round(assist.speed * 100)}%</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist infinite dash"
+              onPress={() => onAssist({ ...assist, infiniteDash: !assist.infiniteDash })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>∞ DASH · {assist.infiniteDash ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist invincibility"
+              onPress={() => onAssist({ ...assist, invincible: !assist.invincible })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>INVINCIBLE · {assist.invincible ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
           {devTools && (
@@ -134,7 +163,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
                     <Text style={styles.stat}>BEST {rec?.bestMs != null ? formatTime(rec.bestMs) : '--:--.---'}</Text>
                     <Text style={styles.stat}>DEATHS {rec?.deaths ?? 0}</Text>
                     <Text style={[styles.stat, rec?.completed && { color: COLORS.orb }]}>
-                      {rec?.completed ? `CLEARED x${rec.clears}` : `${level.rooms.length} ROOMS`}
+                      {rec?.completed ? `CLEARED x${rec.clears}${rec.assisted ? ' · ASSIST' : ''}` : `${level.rooms.length} ROOMS`}
                     </Text>
                   </>
                 ) : problem ? (

@@ -121,6 +121,15 @@ export interface LevelRecord {
   deaths: number;
   completed: boolean;
   clears: number;
+  /** Cleared only with assist mode on (no best time, doesn't count for skin unlocks). */
+  assisted?: boolean;
+}
+
+/** Optional assist mode: slower game, unlimited dashes, no hazard deaths. */
+export interface AssistSettings {
+  speed: number;
+  infiniteDash: boolean;
+  invincible: boolean;
 }
 
 export type ControlScheme = 'auto' | 'manual';
@@ -133,6 +142,7 @@ export interface SaveData {
   controls?: ControlScheme;
   /** Sound effects / music switches (absent → on). */
   audio?: { sfx?: boolean; music?: boolean };
+  assist?: AssistSettings;
   /** Equipped skin ids and ad-unlocked skins (`player:<id>` / `theme:<id>`). */
   skins?: { player?: string; theme?: string; unlocked?: string[] };
 }

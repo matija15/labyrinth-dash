@@ -1,4 +1,4 @@
-import type { LevelRecord, SaveData } from '../types';
+import type { AssistSettings, LevelRecord, SaveData } from '../types';
 
 export const emptySave = (): SaveData => ({ version: 1, totalDeaths: 0, levels: {} });
 
@@ -14,8 +14,19 @@ export function recordDeaths(save: SaveData, levelId: string, count: number): Sa
   };
 }
 
-export function recordClear(save: SaveData, levelId: string, ms: number): { save: SaveData; newBest: boolean } {
+export const ASSIST_OFF: AssistSettings = { speed: 1, infiniteDash: false, invincible: false };
+export const ASSIST_SPEEDS = [1, 0.8, 0.6];
+
+export const isAssisted = (a: AssistSettings | null | undefined): a is AssistSettings =>
+  !!a && (a.speed < 1 || a.infiniteDash || a.invincible);
+
+/** An assisted clear unlocks the next level but sets no best time and keeps the level marked as assisted. */
+export function recordClear(save: SaveData, levelId: string, ms: number, assisted = false): { save: SaveData; newBest: boolean } {
   const rec = save.levels[levelId] ?? emptyRecord();
+  if (assisted) {
+    const level = { ...rec, completed: true, clears: rec.clears + 1, assisted: rec.completed ? !!rec.assisted : true };
+    return { newBest: false, save: { ...save, levels: { ...save.levels, [levelId]: level } } };
+  }
   const newBest = rec.bestMs === null || ms < rec.bestMs;
   return {
     newBest,
@@ -23,7 +34,7 @@ export function recordClear(save: SaveData, levelId: string, ms: number): { save
       ...save,
       levels: {
         ...save.levels,
-        [levelId]: { ...rec, completed: true, clears: rec.clears + 1, bestMs: newBest ? ms : rec.bestMs },
+        [levelId]: { ...rec, completed: true, clears: rec.clears + 1, bestMs: newBest ? ms : rec.bestMs, assisted: false },
       },
     },
   };

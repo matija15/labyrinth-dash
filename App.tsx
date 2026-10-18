@@ -89,6 +89,7 @@ export default function App() {
               onSkins={() => setSkins(true)}
               onControls={(controls) => onSave({ ...save, controls })}
               onAudio={(audio) => onSave({ ...save, audio })}
+              onAssist={(assist) => onSave({ ...save, assist })}
               onReset={() => {
                 resetSave();
                 setSave(emptySave());

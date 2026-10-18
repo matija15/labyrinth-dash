@@ -1,7 +1,8 @@
-import type { GameEvent, InputState, LevelDef, Rect, SawDef, Vec2 } from '../types';
+import type { AssistSettings, GameEvent, InputState, LevelDef, Rect, SawDef, Vec2 } from '../types';
 import * as C from './constants';
 import { approach, circleRect, clamp, easeInOut, lerp, makeRng, overlaps } from './math';
 import { buildWorld, roomAt, T, tileAt, WIND_DIR, type Room, type World } from './world';
+import { isAssisted } from './save';
 
 export interface Particle {
   x: number; y: number; vx: number; vy: number;
@@ -43,6 +44,8 @@ export interface GameOptions {
   autoRun?: boolean;
   /** Editor playtest: allow a level without an exit flag (room practice). */
   allowNoGoal?: boolean;
+  /** Assist mode (ignored when every option is off). */
+  assist?: AssistSettings;
 }
 
 interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean }
@@ -109,9 +112,13 @@ export class Game {
   /** Switch tiles that turned solid around the player; they stay passable until the player leaves them. */
   private switchGhost: number[] = [];
 
+  /** Assist settings when assist mode is on (the run is marked assisted), else null. */
+  readonly assist: AssistSettings | null;
+
   constructor(level: LevelDef, opts: GameOptions = {}) {
     this.level = level;
     this.autoRun = !!opts.autoRun;
+    this.assist = isAssisted(opts.assist) ? opts.assist : null;
     this.world = buildWorld(level, { allowNoGoal: opts.allowNoGoal });
     this.room = this.world.rooms[0];
     this.checkpoint = { ...this.world.start };
@@ -432,6 +439,7 @@ export class Game {
     if (dx === 0 && dy === 0) dx = p.facing;
     const len = Math.hypot(dx, dy);
     p.dashes -= 1;
+    if (this.assist?.infiniteDash) p.dashes = Math.max(p.dashes, 1);
     p.dashTimer = C.DASH_TIME;
     p.dashDir = { x: dx, y: dy };
     p.vx = (dx / len) * C.DASH_SPEED;
@@ -740,13 +748,13 @@ export class Game {
           continue;
         }
         const hb = spikeBox(t, tx, ty);
-        if (hb && overlaps(hb, pr) && spikeLethal(t, p.vx, p.vy)) return this.die();
-        if (t === T.Pit && overlaps({ x: tx * C.TILE, y: ty * C.TILE + 2, w: C.TILE, h: C.TILE }, pr)) return this.die();
+        if (hb && overlaps(hb, pr) && spikeLethal(t, p.vx, p.vy)) return this.hurt();
+        if (t === T.Pit && overlaps({ x: tx * C.TILE, y: ty * C.TILE + 2, w: C.TILE, h: C.TILE }, pr)) return this.hurt();
       }
 
     for (const def of this.room.saws) {
       const s = this.sawState(def, this.room);
-      if (circleRect(s.x, s.y, s.r * 0.82, pr)) return this.die();
+      if (circleRect(s.x, s.y, s.r * 0.82, pr)) return this.hurt();
     }
 
     this.world.keys.forEach((k, i) => {
@@ -836,6 +844,11 @@ export class Game {
   }
 
   // -------------------------------------------------------- death & rooms
+
+  /** Hazard contact: kills unless assist invincibility is on. */
+  private hurt() {
+    if (!this.assist?.invincible) this.die();
+  }
 
   die() {
     if (this.phase !== 'playing') return;

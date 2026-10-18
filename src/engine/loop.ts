@@ -9,6 +9,8 @@ export class GameLoop {
   private last = 0;
   private acc = 0;
   paused = false;
+  /** Game speed (assist mode slows it down). */
+  speed = 1;
 
   constructor(
     private readonly step: (dt: number) => void,
@@ -25,7 +27,7 @@ export class GameLoop {
       const frame = Math.min((now - this.last) / 1000, MAX_FRAME_DT);
       this.last = now;
       if (!this.paused) {
-        this.acc += frame;
+        this.acc += frame * this.speed;
         let steps = 0;
         while (this.acc >= FIXED_DT && steps < 16) {
           this.step(FIXED_DT);

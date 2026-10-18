@@ -556,6 +556,11 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   const y0 = f.insets.top + 30;
   text(c, formatTime(game.time * 1000), x0, y0, font, P.hudText, P.hudShadow);
   text(c, `DEATHS ${game.deaths}`, x0, y0 + 20, smallFont, P.hudDim, P.hudShadow);
+  if (game.assist) {
+    const a = game.assist;
+    const parts = [a.speed < 1 && `${Math.round(a.speed * 100)}%`, a.infiniteDash && '∞ DASH', a.invincible && 'INVINCIBLE'].filter(Boolean);
+    text(c, `ASSIST ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
+  }
   if (game.heldKeys > 0) {
     P.key.setColor(Skia.Color(f.look.theme.key));
     text(c, `KEY x${game.heldKeys}`, x0 + 110, y0 + 20, smallFont, P.key, P.hudShadow);
