@@ -128,6 +128,24 @@ hitboxes and physics are identical in every skin.
   fall below a contrast ratio of 3 against the background. Spikes also need a contrast of at
   least 2.5 against blocks.
 
+## Mechanics, sound, assist and chapters
+
+**Mechanics** (editor tool [key] · tile):
+- One-way platform [L] `-`: jump up through it, land on top, dash straight down to drop through.
+- Moving platform [M]: drag to set its path (tap = 6 tiles to the right). It carries you and can crush you.
+- Switch blocks [B] `[` / [N] `]`: each dash swaps which colour is solid.
+- Dash crystal [Y] `*`: refills your dash, respawns after 3.5 s.
+- Wind [I] `(` `)` `u` `n`: pushes left / right, updraft, downdraft. Press I again to cycle the direction.
+- `src/levels/dev/contraptions.ts` is a demo of all of them.
+
+**Sound and music:** placeholder sounds are in `assets/audio/` (made by `python3 tools/make_sounds.py`). Replace any `.wav` with your own file of the same name. SOUND / MUSIC switches are on the level select.
+
+**Editor:** Redo (Ctrl+Y / Ctrl+Shift+Z), **Stamp** saves the current selection and **Stamps** lets you reuse, rename or delete them. Your deaths in playtests show as red X marks on the grid until you clear them.
+
+**Assist mode:** ASSIST SPEED (100 / 80 / 60 %), ∞ DASH and INVINCIBLE on the level select. Assisted clears still unlock the next level but set no best time, don't save a ghost, are marked "ASSIST" and don't count for skin unlocks.
+
+**Chapters and stats:** give a level a Chapter name in the editor's Save dialog. Consecutive levels with the same name form one chapter; levels without one are grouped in blocks of 15. Each level shows its clears, best time and fewest deaths. Your best run is saved as a ghost you race against (GHOST · ON/OFF).
+
 ## Project structure
 
 ```
