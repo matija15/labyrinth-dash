@@ -61,3 +61,17 @@ test('the skin preview room is a valid level', async () => {
   const { PREVIEW_LEVEL } = await import('../src/skins/preview');
   assert.deepEqual(validateLevel(PREVIEW_LEVEL), []);
 });
+
+test('sprite sheets match their PNG size', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { SHEETS } = await import('../src/skins/sheets');
+  for (const [key, sheet] of Object.entries(SHEETS)) {
+    const png = readFileSync(`assets/skins/${key}/sheet.png`);
+    const w = png.readUInt32BE(16);
+    const h = png.readUInt32BE(20);
+    const anims = Object.values(sheet!.anims);
+    assert.equal(h, sheet!.cellH * anims.length, key);
+    assert.equal(w, sheet!.cellW * Math.max(...anims.map((a) => a.frames)), key);
+    assert.deepEqual(anims.map((a) => a.row).sort(), anims.map((_, i) => i), key);
+  }
+});

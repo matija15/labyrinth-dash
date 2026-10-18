@@ -14,6 +14,10 @@ export const ART: Record<ArtKey, Partial<Record<ArtSlot, number>>> = {
     spike: require('../../assets/skins/pixel/spike.png'),
     saw: require('../../assets/skins/pixel/saw.png'),
   },
+  // Animated: the player slot is a sprite sheet described in SHEETS (src/skins/sheets.ts).
+  hood: {
+    player: require('../../assets/skins/hood/sheet.png'),
+  },
 };
 
 export type ArtImages = Partial<Record<ArtSlot, SkImage>>;

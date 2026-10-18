@@ -16,7 +16,7 @@ export type Unlock =
   | { type: 'ad' };
 
 /** Folder under `assets/skins/` holding PNG art, registered in `src/skins/art.ts`. */
-export type ArtKey = 'pixel';
+export type ArtKey = 'pixel' | 'hood';
 
 export type ArtSlot = 'player' | 'solid' | 'spike' | 'saw' | 'crumble' | 'door' | 'pad' | 'key' | 'orb' | 'goal';
 
@@ -61,6 +61,7 @@ const SPENT = '#56608a';
 export const PLAYER_SKINS: PlayerSkin[] = [
   { id: 'neon', name: 'Neon', color: '#4de8ff', spentColor: SPENT, shape: 'block', unlock: { type: 'free' } },
   { id: 'lime', name: 'Lime', color: '#a6ff4d', spentColor: SPENT, shape: 'round', unlock: { type: 'free' } },
+  { id: 'hood', name: 'Red Hood', color: '#e4573f', spentColor: '#8a5a52', trail: '#ff7a5c', shape: 'block', art: 'hood', unlock: { type: 'free' } },
   { id: 'gold', name: 'Gold', color: '#ffd23f', spentColor: '#7a6a3a', trail: '#ffe58a', shape: 'round', unlock: { type: 'clears', count: 5 } },
   { id: 'ghost', name: 'Ghost', color: '#e8ecff', spentColor: SPENT, shape: 'hollow', unlock: { type: 'deaths', count: 250 } },
   { id: 'prism', name: 'Prism', color: '#ff7ad9', spentColor: '#6a4a7a', trail: '#8ab4ff', shape: 'block', unlock: { type: 'ad' } },

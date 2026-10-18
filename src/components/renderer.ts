@@ -3,12 +3,13 @@ import {
   type SkCanvas, type SkFont, type SkImage, type SkPaint, type SkPath, type SkPicture,
 } from '@shopify/react-native-skia';
 import { PARTICLE_COLORS, type Game } from '../engine/game';
-import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
+import { DASH_TIME, PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
 import { T } from '../engine/world';
 import { formatTime } from '../engine/save';
 import type { TouchController } from '../engine/input';
 import type { Look } from '../engine/skins';
 import type { ArtImages } from '../skins/art';
+import { SHEETS, type PlayerAnim, type SpriteSheet } from '../skins/sheets';
 
 export const COLORS = {
   bg: '#06070d',
@@ -81,6 +82,12 @@ function makePaints({ theme: T, player: PL }: Look) {
     playerGlow: paint(COLORS.player, { blur: 4, alpha: 0.8 }),
     playerStroke: paint(COLORS.player, { stroke: 0.9 }),
     art: paint('#ffffff'),
+    artSpent: (() => {
+      const p = paint('#ffffff');
+      p.setColorFilter(Skia.ColorFilter.MakeMatrix([0.55, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 1, 0]));
+      return p;
+    })(),
+    artGhost: paint('#ffffff'),
     ghost: paint(COLORS.player),
     particle: paint('#ffffff'),
     light: paint('#ffffff', { blend: BlendMode.Plus }),
@@ -363,12 +370,56 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
   }
 }
 
+/** Picks the animation frame for a sprite-sheet player from its movement state. */
+function sheetFrame(game: Game, sheet: SpriteSheet) {
+  const p = game.player;
+  let anim: PlayerAnim = 'idle';
+  let frame = 0;
+  if (p.dashTimer > 0) {
+    anim = 'dash';
+    frame = Math.floor((1 - p.dashTimer / DASH_TIME) * sheet.anims.dash.frames);
+  } else if (!p.onGround) {
+    anim = 'air';
+    frame = p.vy < 0 ? 0 : 1;
+  } else if (Math.abs(p.vx) > 5) {
+    anim = 'run';
+  }
+  const a = sheet.anims[anim];
+  if (anim === 'idle' || anim === 'run') frame = Math.floor(game.worldTime * a.fps);
+  frame = anim === 'dash' || anim === 'air' ? Math.min(frame, a.frames - 1) : frame % a.frames;
+  return Skia.XYWHRect(frame * sheet.cellW, a.row * sheet.cellH, sheet.cellW, sheet.cellH);
+}
+
+/** Draws a sheet cell standing on (cx, footY), mirrored when facing left. */
+function drawSprite(
+  c: SkCanvas, img: SkImage, src: ReturnType<typeof sheetFrame>, sheet: SpriteSheet,
+  cx: number, footY: number, facing: number, sx: number, sy: number, p: SkPaint,
+) {
+  // Sprites get a softer squash & stretch than the plain block, or detailed art looks smeared.
+  const w = (sheet.cellW / sheet.density) * (1 + (sx - 1) * 0.35);
+  const h = (sheet.cellH / sheet.density) * (1 + (sy - 1) * 0.35);
+  c.save();
+  c.translate(cx, footY);
+  if (facing < 0) c.scale(-1, 1);
+  c.drawImageRectOptions(img, src, Skia.XYWHRect(-w / 2, -h, w, h), FilterMode.Nearest, MipmapMode.None, p);
+  c.restore();
+}
+
 function drawPlayer(c: SkCanvas, game: Game, P: Paints, { player: skin }: Look, art: ArtImages) {
   const p = game.player;
   const ready = p.dashes > 0;
   const color = ready ? skin.color : skin.spentColor;
+  const sheet = skin.art && art.player ? SHEETS[skin.art] : undefined;
 
-  for (const g of game.ghosts) {
+  if (sheet && art.player) {
+    const src = Skia.XYWHRect(sheet.anims.dash.frames > 1 ? sheet.cellW : 0, sheet.anims.dash.row * sheet.cellH, sheet.cellW, sheet.cellH);
+    for (const g of game.ghosts) {
+      const a = Math.max(0, g.life / 0.28) * 0.5;
+      P.artGhost.setColorFilter(Skia.ColorFilter.MakeBlend(Skia.Color(hexWithAlpha(skin.trail ?? skin.color, a)), BlendMode.SrcIn));
+      drawSprite(c, art.player, src, sheet, g.x + PLAYER_W / 2, g.y + PLAYER_H, p.facing, g.sx, g.sy, P.artGhost);
+    }
+  }
+  for (const g of sheet ? [] : game.ghosts) {
     P.ghost.setColor(hexWithAlpha(skin.trail ?? skin.color, Math.max(0, g.life / 0.28) * 0.45));
     c.drawRect(Skia.XYWHRect(g.x, g.y, PLAYER_W, PLAYER_H), P.ghost);
   }
@@ -385,6 +436,10 @@ function drawPlayer(c: SkCanvas, game: Game, P: Paints, { player: skin }: Look, 
   const w = PLAYER_W * p.scaleX;
   const h = PLAYER_H * p.scaleY;
   const rect = Skia.XYWHRect(cx - w / 2, p.y + PLAYER_H - h, w, h);
+  if (sheet && art.player) {
+    drawSprite(c, art.player, sheetFrame(game, sheet), sheet, cx, p.y + PLAYER_H, p.facing, p.scaleX, p.scaleY, ready ? P.art : P.artSpent);
+    return;
+  }
   if (art.player) {
     // Art is drawn a bit larger than the 6×6 hitbox so 16×16 sprites read well; it faces right.
     const aw = w * (TILE / PLAYER_W);
