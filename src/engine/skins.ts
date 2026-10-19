@@ -130,7 +130,7 @@ export function unlockStatus(kind: SkinKind, id: string, save: SaveData, release
     case 'free':
       return { unlocked: true, label: 'Free' };
     case 'clears': {
-      const n = releaseIds.filter((l) => save.levels[l]?.completed).length;
+      const n = releaseIds.filter((l) => save.levels[l]?.completed && !save.levels[l]?.assisted).length;
       return { unlocked: n >= u.count, label: `Clear ${u.count} levels · ${Math.min(n, u.count)}/${u.count}` };
     }
     case 'deaths':

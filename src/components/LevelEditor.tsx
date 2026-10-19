@@ -10,18 +10,21 @@ import {
   TOOL_SHORTCUTS, toolForKey, type EditorTool,
 } from '../engine/editor';
 import { deletePackLevel, fetchPack, reorderPack, savePackLevel } from '../engine/levelServer';
-import { loadEditorDraft, writeEditorDraft } from '../engine/storage';
+import { loadEditorDraft, loadStamps, writeEditorDraft, writeStamps, type Stamp } from '../engine/storage';
 import { DEV_LEVELS, RELEASE_LEVELS } from '../levels';
 import type { LevelDef } from '../types';
 import { EditorController, type EditorSnapshot } from './editorController';
 import { buildEditorPicture, renderEditorFrame } from './editorRenderer';
-import { COLORS } from './renderer';
+import { COLORS, MECH } from './renderer';
 
 interface Props {
   /** False while a playtest covers the editor (disables keyboard / wheel shortcuts). */
   active: boolean;
   onPlaytest: (level: LevelDef) => void;
   onExit: () => void;
+  /** Where playtests died (world px), drawn as red ✕ marks. */
+  deathMarks?: [number, number][];
+  onClearDeathMarks?: () => void;
 }
 
 const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
@@ -35,6 +38,15 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: 'G', label: 'Exit Flag', color: COLORS.goal },
   { tool: '=', label: 'Crumble', color: COLORS.crumble },
   { tool: 'J', label: 'Jump Pad', color: COLORS.pad },
+  { tool: '-', label: 'One-Way', color: COLORS.solidEdge },
+  { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
+  { tool: '[', label: 'Switch A', color: MECH.switchA },
+  { tool: ']', label: 'Switch B', color: MECH.switchB },
+  { tool: '*', label: 'Crystal', color: MECH.crystal },
+  { tool: ')', label: 'Wind →', color: MECH.wind },
+  { tool: '(', label: 'Wind ←', color: MECH.wind },
+  { tool: 'u', label: 'Wind ↑', color: MECH.wind },
+  { tool: 'n', label: 'Wind ↓', color: MECH.wind },
   { tool: 'erase', label: 'Eraser', color: COLORS.dim },
   { tool: 'select', label: 'Select', color: COLORS.player },
   { tool: 'paste', label: 'Paste', color: COLORS.goal },
@@ -46,6 +58,15 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
 const HINTS: Partial<Record<EditorTool, string>> = {
   '^': 'Spikes point away from the wall they touch',
   saw: 'Drag to set a saw path · tap for an orbiting saw',
+  platform: 'Drag to set where a 3-wide moving platform goes · tap for one sliding 6 tiles right',
+  '-': 'Land on it from above · jump up through it · dash straight down to drop through',
+  '[': 'Solid at the start · every dash swaps Switch A and Switch B',
+  ']': 'Solid after the first dash · every dash swaps Switch A and Switch B',
+  '*': 'Refills two dashes (comes back after 3.5 s)',
+  ')': 'Wind pushes the player · press I again to turn it',
+  '(': 'Wind pushes the player · press I again to turn it',
+  u: 'Up-draft lifts the player · press I again to turn it',
+  n: 'Down-draft pushes the player down · press I again to turn it',
   S: 'Every room needs a spawn (checkpoint) · playtest starts at the first room’s',
   G: 'One exit flag per level',
   erase: 'Drag to erase tiles and saws',
@@ -57,7 +78,9 @@ const HINTS: Partial<Record<EditorTool, string>> = {
 };
 
 /** Tools that Fill can paint across a selection. */
-const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', 'erase']);
+const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', '-', '[', ']', '*', ')', '(', 'u', 'n', 'erase']);
+/** Pressing the wind hotkey again turns the wind: → ↑ ← ↓. */
+const WIND_TOOLS: EditorTool[] = [')', 'u', '(', 'n'];
 
 /** Zoom is relative to the default view (100% shows 3/4 of a room's height). */
 const BASE_ZOOM = 0.75;
@@ -65,7 +88,7 @@ const ZOOM_MIN = 0.33;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 1.25;
 const PALETTE_W = 126;
-export function LevelEditor({ active, onPlaytest, onExit }: Props) {
+export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDeathMarks }: Props) {
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 11);
   const ctl = useMemo(() => new EditorController(), []);
@@ -76,7 +99,24 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
   const [zoom, setZoom] = useState(1);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [modal, setModal] = useState<'export' | 'levels' | 'save' | null>(null);
+  const [modal, setModal] = useState<'export' | 'levels' | 'save' | 'stamps' | null>(null);
+  const [stamps, setStamps] = useState<Stamp[]>([]);
+  useEffect(() => {
+    loadStamps().then(setStamps);
+  }, []);
+  const updateStamps = (next: Stamp[]) => {
+    setStamps(next);
+    void writeStamps(next);
+  };
+  const saveStamp = () => {
+    if (!snap.selection) return ctl.setMessage('Select a block first, then press Stamp');
+    ctl.selectionOp('copy');
+    const clip = ctl.getClip();
+    if (!clip) return;
+    const name = `Stamp ${stamps.length + 1}`;
+    updateStamps([...stamps, { name, clip }]);
+    ctl.setMessage(`Saved “${name}” (${clip.w}×${clip.h}) · open Stamps to place it`);
+  };
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   const baseScale = (BASE_ZOOM * (size.height || 1)) / (VIEW_TILES_H * TILE);
@@ -129,9 +169,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     return renderEditorFrame({
       level: snap.level, content, width: size.width, height: size.height, scale,
       camX: snap.camX, camY: snap.camY, grid, font, cursor: snap.cursor, sawDrag: snap.sawDrag,
-      selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
+      platformDrag: snap.platformDrag, deathMarks, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
     });
-  }, [content, size, scale, grid, font, snap, tool]);
+  }, [content, size, scale, grid, font, snap, tool, deathMarks]);
 
   const gesture = useMemo(() => createEditorGesture(ctl), [ctl]);
 
@@ -182,6 +222,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
     if (d) {
       ctl.panBy(d[0], d[1]);
       e.preventDefault();
+    } else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) {
+      ctl.redo();
+      e.preventDefault();
     } else if (mod && k === 'z') {
       ctl.undo();
       e.preventDefault();
@@ -203,7 +246,9 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
       zoomTo(zoom / ZOOM_STEP);
     } else {
       const t = toolForKey(e.key);
-      if (t) pickTool(t);
+      const w = WIND_TOOLS.indexOf(tool);
+      if (t === ')' && w >= 0) pickTool(WIND_TOOLS[(w + 1) % WIND_TOOLS.length]);
+      else if (t) pickTool(t);
     }
   });
   const onWheel = useEffectEvent((e: WheelEvent) => {
@@ -321,11 +366,14 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
 
       <View style={[styles.topBar, { top: insets.top + 8, right: insets.right + 8, left: insets.left + PALETTE_W + 16 }]}>
         <BarButton label="Undo" onPress={() => ctl.undo()} disabled={!snap.undoCount} />
+        <BarButton label="Redo" onPress={() => ctl.redo()} disabled={!snap.redoCount} />
         <BarButton label={grid ? 'Grid ✓' : 'Grid'} onPress={() => setGrid((g) => !g)} />
         <BarButton label="−" a11y="Zoom out" onPress={() => zoomTo(zoom / ZOOM_STEP)} disabled={zoom <= ZOOM_MIN + 1e-6} />
         <BarButton label={`${Math.round(zoom * 100)}% ⟲`} a11y="Reset zoom" onPress={() => zoomTo(1)} />
         <BarButton label="+" a11y="Zoom in" onPress={() => zoomTo(zoom * ZOOM_STEP)} disabled={zoom >= ZOOM_MAX - 1e-6} />
         <BarButton label="Levels" onPress={() => setModal('levels')} />
+        <BarButton label="Stamps" onPress={() => setModal('stamps')} />
+        {!!deathMarks?.length && <BarButton label={`✕ ${deathMarks.length} deaths`} onPress={() => onClearDeathMarks?.()} />}
         <BarButton label="Save" onPress={() => setModal('save')} />
         <BarButton label="Export" onPress={() => setModal('export')} />
         <BarButton label="▶ Room [T]" a11y="Playtest current room" onPress={playtestRoom} primary />
@@ -339,6 +387,7 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
           <Text style={styles.small}>{snap.selection.w}×{snap.selection.h}</Text>
           <BarButton label="Copy" onPress={() => ctl.selectionOp('copy')} />
           <BarButton label="Cut" onPress={() => ctl.selectionOp('cut')} />
+          <BarButton label="Stamp" onPress={saveStamp} />
           <BarButton label={`Fill ${fillLabel}`} onPress={() => ctl.selectionOp('fill', fillTool)} />
           <BarButton label="Clear" onPress={() => ctl.selectionOp('clear')} />
           <BarButton label="✕" onPress={() => ctl.selectionOp('deselect')} />
@@ -360,9 +409,23 @@ export function LevelEditor({ active, onPlaytest, onExit }: Props) {
           sourceId={sourceId}
           onRename={(name) => ctl.rename(name)}
           onSubtitle={(sub) => ctl.setSubtitle(sub)}
+          onChapter={(ch) => ctl.setChapter(ch)}
           onSaved={(id, position) => {
             setSourceId(id);
             ctl.setMessage(`Saved ${id}.json as level ${position}`);
+            setModal(null);
+          }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {modal === 'stamps' && (
+        <StampsModal
+          stamps={stamps}
+          onChange={updateStamps}
+          onUse={(s) => {
+            ctl.setClip(s.clip);
+            pickTool('paste');
+            ctl.setMessage(`Placing “${s.name}” · drag to position, release to paste`);
             setModal(null);
           }}
           onClose={() => setModal(null)}
@@ -429,6 +492,38 @@ function Sheet({ title, children, onClose }: { title: string; children: React.Re
   );
 }
 
+function StampsModal({
+  stamps, onChange, onUse, onClose,
+}: {
+  stamps: Stamp[];
+  onChange: (stamps: Stamp[]) => void;
+  onUse: (stamp: Stamp) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet title="STAMPS" onClose={onClose}>
+      {stamps.length === 0 && (
+        <Text style={styles.small}>No stamps yet. Use Select, drag a box, then press Stamp to save it here.</Text>
+      )}
+      <ScrollView style={{ maxHeight: 320 }}>
+        {stamps.map((s, i) => (
+          <View key={i} style={styles.row}>
+            <TextInput
+              value={s.name}
+              onChangeText={(name) => onChange(stamps.map((x, j) => (j === i ? { ...x, name } : x)))}
+              style={[styles.input, { flex: 1 }]}
+              autoCorrect={false}
+            />
+            <Text style={styles.small}>{s.clip.w}×{s.clip.h}</Text>
+            <BarButton label="Use" onPress={() => onUse(s)} primary />
+            <BarButton label="Delete" onPress={() => onChange(stamps.filter((_, j) => j !== i))} />
+          </View>
+        ))}
+      </ScrollView>
+    </Sheet>
+  );
+}
+
 function ExportModal({ level, onRename, onClose }: { level: LevelDef; onRename: (name: string) => void; onClose: () => void }) {
   const [copied, setCopied] = useState<string | null>(null);
   const code = levelToCode(level);
@@ -469,12 +564,13 @@ function ExportModal({ level, onRename, onClose }: { level: LevelDef; onRename: 
 }
 
 function SaveModal({
-  level, sourceId, onRename, onSubtitle, onSaved, onClose,
+  level, sourceId, onRename, onSubtitle, onChapter, onSaved, onClose,
 }: {
   level: LevelDef;
   sourceId: string | null;
   onRename: (name: string) => void;
   onSubtitle: (subtitle: string) => void;
+  onChapter: (chapter: string) => void;
   onSaved: (id: string, position: number) => void;
   onClose: () => void;
 }) {
@@ -515,6 +611,17 @@ function SaveModal({
           onChangeText={onSubtitle}
           style={[styles.input, { flex: 1 }]}
           placeholder="Shown under the name on level select"
+          placeholderTextColor={COLORS.dim}
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Chapter</Text>
+        <TextInput
+          value={level.chapter ?? ''}
+          onChangeText={onChapter}
+          style={[styles.input, { flex: 1 }]}
+          placeholder="e.g. Caves · empty = automatic blocks of 15"
           placeholderTextColor={COLORS.dim}
           autoCorrect={false}
         />

@@ -106,6 +106,7 @@ test('editor tool hotkeys', () => {
   const expect: Record<string, string> = {
     w: '#', '1': '#', x: '^', '2': '^', a: 'saw', '3': 'saw', o: 'O', '4': 'O', k: 'K', '5': 'K', d: 'D', '6': 'D',
     s: 'S', '7': 'S', f: 'G', '8': 'G', c: '=', '9': '=', j: 'J', '0': 'J', e: 'erase', v: 'select', p: 'paste', r: 'room+',
+    l: '-', b: '[', n: ']', y: '*', m: 'platform', i: ')',
   };
   for (const [key, tool] of Object.entries(expect)) {
     assert.equal(toolForKey(key), tool, key);

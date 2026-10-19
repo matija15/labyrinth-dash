@@ -1,10 +1,11 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useMemo } from 'react';
-import { formatTime } from '../engine/save';
+import { useMemo, useState } from 'react';
+import { chapters } from '../engine/chapters';
+import { ASSIST_OFF, ASSIST_SPEEDS, formatTime } from '../engine/save';
 import { validateLevel } from '../engine/world';
 import type { LevelPack } from '../levels';
-import type { ControlScheme, LevelDef, SaveData } from '../types';
+import type { AssistSettings, ControlScheme, LevelDef, SaveData } from '../types';
 import { COLORS } from './renderer';
 
 interface Props {
@@ -13,6 +14,9 @@ interface Props {
   onPlay: (id: string) => void;
   onReset: () => void;
   onControls: (controls: ControlScheme) => void;
+  onAudio: (audio: { sfx: boolean; music: boolean }) => void;
+  onAssist: (assist: AssistSettings) => void;
+  onGhost: (ghost: boolean) => void;
   onEditor: () => void;
   onSkins: () => void;
   /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
@@ -21,9 +25,17 @@ interface Props {
   onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEditor, onSkins, devTools, pack, onPack }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onAssist, onGhost, onEditor, onSkins, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
+  const sfx = save.audio?.sfx ?? true;
+  const music = save.audio?.music ?? true;
+  const assist = save.assist ?? ASSIST_OFF;
+  const ghostOn = save.ghost ?? true;
+  const chs = useMemo(() => chapters(levels), [levels]);
+  const [chapterIdx, setChapterIdx] = useState(0);
+  const ch = chs[Math.min(chapterIdx, chs.length - 1)];
+  const nextSpeed = ASSIST_SPEEDS[(ASSIST_SPEEDS.indexOf(assist.speed) + 1) % ASSIST_SPEEDS.length];
   const problems = useMemo(() => levels.map((l) => validateLevel(l)[0] ?? null), [levels]);
   return (
     <ScrollView
@@ -52,6 +64,58 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           >
             <Text style={styles.controlsText}>CONTROLS · {controls === 'auto' ? 'AUTO-RUN' : 'RUN PADS'}</Text>
           </Pressable>
+          <View style={styles.devRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle sound effects"
+              onPress={() => onAudio({ sfx: !sfx, music })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>SOUND · {sfx ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle music"
+              onPress={() => onAudio({ sfx, music: !music })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>MUSIC · {music ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle best-run ghost"
+              onPress={() => onGhost(!ghostOn)}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>GHOST · {ghostOn ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.devRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist game speed"
+              onPress={() => onAssist({ ...assist, speed: nextSpeed })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>ASSIST SPEED · {Math.round(assist.speed * 100)}%</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist infinite dash"
+              onPress={() => onAssist({ ...assist, infiniteDash: !assist.infiniteDash })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>∞ DASH · {assist.infiniteDash ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Assist invincibility"
+              onPress={() => onAssist({ ...assist, invincible: !assist.invincible })}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>INVINCIBLE · {assist.invincible ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+          </View>
           {devTools && (
             <View style={styles.devRow}>
               <Pressable
@@ -83,6 +147,33 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           {pack === 'release' ? 'players only ever see this release pack' : 'demo levels are never shipped'}
         </Text>
       )}
+      {chs.length > 1 && (
+        <View style={styles.row}>
+          {chs.map((c, k) => {
+            const cleared = levels.slice(c.start, c.end).filter((l) => save.levels[l.id]?.completed).length;
+            const open = devTools || c.start === 0 || !!save.levels[levels[c.start - 1].id]?.completed;
+            return (
+              <Pressable
+                key={k}
+                accessibilityRole="button"
+                accessibilityLabel={`Chapter ${c.name}`}
+                disabled={!open}
+                onPress={() => setChapterIdx(k)}
+                style={({ pressed }) => [
+                  styles.controls,
+                  c === ch && { borderColor: COLORS.player },
+                  !open && { opacity: 0.4 },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.controlsText}>
+                  {open ? '' : '🔒 '}{c.name.toUpperCase()} · {cleared}/{c.end - c.start}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
       <View style={styles.row}>
         {levels.length === 0 && (
           <Text style={styles.help}>
@@ -92,6 +183,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
           </Text>
         )}
         {levels.map((level, i) => {
+          if (ch && (i < ch.start || i >= ch.end)) return null;
           const rec = save.levels[level.id];
           const problem = problems[i];
           const unlocked = !problem && (devTools || i === 0 || !!save.levels[levels[i - 1].id]?.completed);
@@ -113,7 +205,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onEdito
                     <Text style={styles.stat}>BEST {rec?.bestMs != null ? formatTime(rec.bestMs) : '--:--.---'}</Text>
                     <Text style={styles.stat}>DEATHS {rec?.deaths ?? 0}</Text>
                     <Text style={[styles.stat, rec?.completed && { color: COLORS.orb }]}>
-                      {rec?.completed ? `CLEARED x${rec.clears}` : `${level.rooms.length} ROOMS`}
+                      {rec?.completed ? `CLEARED x${rec.clears}${rec.assisted ? ' · ASSIST' : ''}${rec.fewestDeaths !== undefined ? ` · BEST ${rec.fewestDeaths}✕` : ''}` : `${level.rooms.length} ROOMS`}
                     </Text>
                   </>
                 ) : problem ? (

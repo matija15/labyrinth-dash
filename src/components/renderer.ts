@@ -69,6 +69,18 @@ function makePaints({ theme: T, player: PL }: Look) {
     orb: paint(COLORS.orb),
     orbGlow: paint(COLORS.orb, { blur: 5, alpha: 0.6 }),
     orbSpent: paint(COLORS.orb, { stroke: 0.6, alpha: 0.35 }),
+    crystal: paint(MECH.crystal),
+    crystalGlow: paint(MECH.crystal, { blur: 5, alpha: 0.7 }),
+    crystalSpent: paint(MECH.crystal, { stroke: 0.6, alpha: 0.35 }),
+    switchA: paint(MECH.switchA),
+    switchAOff: paint(MECH.switchA, { stroke: 0.6, alpha: 0.45 }),
+    switchB: paint(MECH.switchB),
+    switchBOff: paint(MECH.switchB, { stroke: 0.6, alpha: 0.45 }),
+    switchLine: paint('#000000', { stroke: 0.5, alpha: 0.35 }),
+    wind: paint(MECH.wind, { stroke: 0.6, alpha: 0.4 }),
+    oneWay: paint(COLORS.solidEdge),
+    platform: paint(COLORS.solidEdge),
+    platformTop: paint(COLORS.player, { stroke: 0.8, alpha: 0.7 }),
     pad: paint(COLORS.pad),
     padGlow: paint(COLORS.pad, { blur: 3, alpha: 0.5 }),
     saw: paint(COLORS.saw),
@@ -104,6 +116,8 @@ function makePaints({ theme: T, player: PL }: Look) {
 }
 
 const UI = { text: '#e8ecff', dim: '#7c86b0' };
+/** Colours of the newer mechanics (shared by every theme, like hazards they stay readable everywhere). */
+export const MECH = { crystal: '#ff7ae0', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff' };
 
 const getPaints = (look: Look) => {
   const key = `${look.theme.id}/${look.player.id}`;
@@ -175,6 +189,10 @@ export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}):
         if (exposedD) c.drawLine(x, y + TILE - 0.3, x + TILE, y + TILE - 0.3, P.edge);
         if (exposedL) c.drawLine(x + 0.3, y, x + 0.3, y + TILE, P.edge);
         if (exposedR) c.drawLine(x + TILE - 0.3, y, x + TILE - 0.3, y + TILE, P.edge);
+      } else if (t === T.OneWay) {
+        c.drawRect(Skia.XYWHRect(x, y, TILE, 2), P.oneWay);
+        c.drawLine(x + 2, y + 2, x + 2, y + 4, P.oneWay);
+        c.drawLine(x + 6, y + 2, x + 6, y + 4, P.oneWay);
       } else if (t >= T.SpikeUp && t <= T.SpikeRight) {
         if (art.spike) {
           c.save();
@@ -216,6 +234,8 @@ export interface FrameContext {
   now: number;
   look: Look;
   art: ArtImages;
+  /** Best-run ghost position (world px), if one is shown. */
+  ghost?: { x: number; y: number } | null;
 }
 
 const hexWithAlpha = (hex: string, a: number) => {
@@ -343,6 +363,55 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     const path = b.detach();
     c.drawPath(path, P.goalGlow);
     c.drawPath(path, P.goal);
+  }
+
+  // Switch blocks
+  for (const i of world.switches) {
+    const x = (i % world.w) * TILE;
+    const y = Math.floor(i / world.w) * TILE;
+    const b = world.grid[i] === T.SwitchB;
+    if (b === game.switchFlipped) {
+      c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), b ? P.switchB : P.switchA);
+      c.drawRect(Skia.XYWHRect(x + 1.5, y + 1.5, TILE - 3, TILE - 3), P.switchLine);
+    } else c.drawRect(Skia.XYWHRect(x + 0.8, y + 0.8, TILE - 1.6, TILE - 1.6), b ? P.switchBOff : P.switchAOff);
+  }
+
+  // Wind streaks drift along the wind
+  world.winds.forEach((w, i) => {
+    const s = ((t * 24 + i * 3.7) % TILE + TILE) % TILE;
+    const x = w.tx * TILE;
+    const y = w.ty * TILE;
+    const o = (i * 5) % 7 + 0.5;
+    if (w.dir.x) {
+      const sx = w.dir.x > 0 ? x + s : x + TILE - s;
+      c.drawLine(sx, y + o, sx + w.dir.x * 2.5, y + o, P.wind);
+    } else {
+      const sy = w.dir.y > 0 ? y + s : y + TILE - s;
+      c.drawLine(x + o, sy, x + o, sy + w.dir.y * 2.5, P.wind);
+    }
+  });
+
+  // Crystals
+  world.crystals.forEach((o, i) => {
+    const r = game.crystalCooldown[i] > 0 ? 2.6 : 3.4 + Math.sin(t * 6 + i) * 0.3;
+    const d = Skia.PathBuilder.Make();
+    d.moveTo(o.x, o.y - r * 1.3); d.lineTo(o.x + r, o.y); d.lineTo(o.x, o.y + r * 1.3); d.lineTo(o.x - r, o.y); d.close();
+    const path = d.detach();
+    if (game.crystalCooldown[i] > 0) return c.drawPath(path, P.crystalSpent);
+    c.drawPath(path, P.crystalGlow);
+    c.drawPath(path, P.crystal);
+  });
+
+  // Moving platforms (current room, plus neighbours seen during transitions)
+  for (const room of world.rooms) {
+    if (!room.platforms.length) continue;
+    const r = room.rect;
+    if (r.x > game.camera.x + game.view.w || r.x + r.w < game.camera.x || r.y > game.camera.y + game.view.h || r.y + r.h < game.camera.y) continue;
+    for (const pr of room === game.room ? game.plats : game.platRects(room)) {
+      if (art.solid) for (let k = 0; k < pr.w; k += TILE) drawArt(c, art.solid, pr.x + k, pr.y, TILE, TILE);
+      else c.drawRect(Skia.XYWHRect(pr.x, pr.y, pr.w, pr.h), P.platform);
+      c.drawLine(pr.x, pr.y + 0.4, pr.x + pr.w, pr.y + 0.4, P.platformTop);
+    }
   }
 
   // Saws (current room + neighbours visible during transitions)
@@ -489,6 +558,11 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   const y0 = f.insets.top + 30;
   text(c, formatTime(game.time * 1000), x0, y0, font, P.hudText, P.hudShadow);
   text(c, `DEATHS ${game.deaths}`, x0, y0 + 20, smallFont, P.hudDim, P.hudShadow);
+  if (game.assist) {
+    const a = game.assist;
+    const parts = [a.speed < 1 && `${Math.round(a.speed * 100)}%`, a.infiniteDash && '∞ DASH', a.invincible && 'INVINCIBLE'].filter(Boolean);
+    text(c, `ASSIST ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
+  }
   if (game.heldKeys > 0) {
     P.key.setColor(Skia.Color(f.look.theme.key));
     text(c, `KEY x${game.heldKeys}`, x0 + 110, y0 + 20, smallFont, P.key, P.hudShadow);
@@ -531,6 +605,10 @@ export function renderFrame(f: FrameContext): SkPicture {
   c.translate(-game.camera.x + sx, -game.camera.y + sy);
   c.clipRect(Skia.XYWHRect(game.camera.x - 4, game.camera.y - 4, game.view.w + 8, game.view.h + 8), ClipOp.Intersect, false);
   drawWorld(c, f, P);
+  if (f.ghost) {
+    P.ghost.setColor(hexWithAlpha(f.look.player.color, 0.3));
+    c.drawRect(Skia.XYWHRect(f.ghost.x, f.ghost.y, PLAYER_W, PLAYER_H), P.ghost);
+  }
   drawPlayer(c, game, P, f.look, f.art);
   drawParticles(c, game, P);
   c.restore();

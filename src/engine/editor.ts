@@ -1,4 +1,4 @@
-import type { LevelDef, RoomDef, SawDef } from '../types';
+import type { LevelDef, PlatformDef, RoomDef, SawDef } from '../types';
 import { VIEW_TILES_H } from './constants';
 import { validateLevel } from './world';
 
@@ -8,7 +8,8 @@ export const ROOM_H = VIEW_TILES_H;
 
 export type EditorTool =
   | '#' | '^' | '=' | 'O' | 'K' | 'D' | 'J' | 'S' | 'G'
-  | 'saw' | 'erase' | 'room+' | 'room-' | 'pan' | 'select' | 'paste';
+  | '-' | '[' | ']' | '*' | '(' | ')' | 'u' | 'n'
+  | 'saw' | 'platform' | 'erase' | 'room+' | 'room-' | 'pan' | 'select' | 'paste';
 
 export interface TileRect { x: number; y: number; w: number; h: number }
 
@@ -148,10 +149,10 @@ export function eraseSawsAt(level: LevelDef, tx: number, ty: number): boolean {
  * Mutates `level`; returns whether anything changed.
  */
 export function paintTile(level: LevelDef, tool: EditorTool, tx: number, ty: number): boolean {
-  if (tool === 'pan' || tool === 'saw' || tool === 'room-' || tool === 'select' || tool === 'paste') return false;
+  if (tool === 'pan' || tool === 'saw' || tool === 'platform' || tool === 'room-' || tool === 'select' || tool === 'paste') return false;
   if (tool === 'room+') return addRoomAt(level, tx, ty) >= 0;
   if (tool === 'erase') {
-    const sawGone = eraseSawsAt(level, tx, ty);
+    const sawGone = eraseSawsAt(level, tx, ty) || erasePlatformsAt(level, tx, ty);
     const i = roomIndexAt(level, tx, ty);
     const r = level.rooms[i];
     return (i >= 0 && setChar(r, tx - r.x, ty - r.y, '.')) || sawGone;
@@ -189,6 +190,40 @@ export function addSaw(level: LevelDef, ax: number, ay: number, bx: number, by: 
       : { kind: 'path', points: [p(ax, ay), p(bx, by)], speed: SAW_SPEED, radius: SAW_RADIUS, mode: 'pingpong' };
   r.saws = [...(r.saws ?? []), saw];
   return true;
+}
+
+export const PLATFORM_W = 3;
+export const PLATFORM_SPEED = 3;
+
+/**
+ * Adds a moving platform (PLATFORM_W tiles wide, its left end on the dragged tiles). A drag from (ax, ay) to (bx, by)
+ * makes it ping-pong between the two; a tap makes one that slides 6 tiles to the right and back.
+ */
+export function addPlatform(level: LevelDef, ax: number, ay: number, bx: number, by: number): boolean {
+  let i = roomIndexAt(level, ax, ay);
+  if (i < 0) i = addRoomAt(level, ax, ay);
+  if (i < 0) return false;
+  const r = level.rooms[i];
+  if (ax === bx && ay === by) bx = ax + 6;
+  const plat: PlatformDef = { points: [[ax - r.x, ay - r.y], [bx - r.x, by - r.y]], w: PLATFORM_W, speed: PLATFORM_SPEED };
+  r.platforms = [...(r.platforms ?? []), plat];
+  return true;
+}
+
+/** Removes platforms with a waypoint covering tile (tx, ty). */
+export function erasePlatformsAt(level: LevelDef, tx: number, ty: number): boolean {
+  let changed = false;
+  for (const r of level.rooms) {
+    if (!r.platforms?.length) continue;
+    const x = tx - r.x;
+    const y = ty - r.y;
+    const keep = r.platforms.filter((p) => !p.points.some(([px, py]) => y >= py - 0.5 && y < py + 1 && x >= px - 0.5 && x < px + p.w));
+    if (keep.length === r.platforms.length) continue;
+    changed = true;
+    if (keep.length) r.platforms = keep;
+    else delete r.platforms;
+  }
+  return changed;
 }
 
 /** Tiles on the line between two tiles (inclusive), for drag painting. */
@@ -230,6 +265,7 @@ export interface Clip {
   h: number;
   rows: string[];
   saws: SawDef[];
+  platforms?: PlatformDef[];
 }
 
 export const normRect = (ax: number, ay: number, bx: number, by: number): TileRect => ({
@@ -240,6 +276,12 @@ const shiftSaw = (s: SawDef, dx: number, dy: number): SawDef =>
   s.kind === 'orbit'
     ? { ...s, center: [s.center[0] + dx, s.center[1] + dy] }
     : { ...s, points: s.points.map(([x, y]): [number, number] => [x + dx, y + dy]) };
+
+const shiftPlatform = (p: PlatformDef, dx: number, dy: number): PlatformDef =>
+  ({ ...p, points: p.points.map(([x, y]): [number, number] => [x + dx, y + dy]) });
+
+const platformInside = (p: PlatformDef, r: RoomDef, rect: TileRect) =>
+  p.points.every(([x, y]) => x + r.x >= rect.x && x + r.x < rect.x + rect.w && y + r.y >= rect.y && y + r.y < rect.y + rect.h);
 
 /** Whether every waypoint / orbit center of room `r`'s saw lies inside `rect` (world tiles). */
 const sawInside = (s: SawDef, r: RoomDef, rect: TileRect) =>
@@ -259,7 +301,10 @@ export function copyRect(level: LevelDef, rect: TileRect): Clip {
   const saws: SawDef[] = [];
   for (const r of level.rooms)
     for (const s of r.saws ?? []) if (sawInside(s, r, rect)) saws.push(shiftSaw(s, r.x - rect.x, r.y - rect.y));
-  return { w: rect.w, h: rect.h, rows, saws };
+  const platforms: PlatformDef[] = [];
+  for (const r of level.rooms)
+    for (const p of r.platforms ?? []) if (platformInside(p, r, rect)) platforms.push(shiftPlatform(p, r.x - rect.x, r.y - rect.y));
+  return { w: rect.w, h: rect.h, rows, saws, ...(platforms.length ? { platforms } : {}) };
 }
 
 /** Empties every tile and removes every saw inside `rect`. */
@@ -277,6 +322,14 @@ export function clearRect(level: LevelDef, rect: TileRect): boolean {
     changed = true;
     if (keep.length) r.saws = keep;
     else delete r.saws;
+  }
+  for (const r of level.rooms) {
+    if (!r.platforms?.length) continue;
+    const keep = r.platforms.filter((p) => !platformInside(p, r, rect));
+    if (keep.length === r.platforms.length) continue;
+    changed = true;
+    if (keep.length) r.platforms = keep;
+    else delete r.platforms;
   }
   return changed;
 }
@@ -310,6 +363,14 @@ export function pasteClip(level: LevelDef, clip: Clip, tx: number, ty: number): 
     if (i < 0) continue;
     const r = level.rooms[i];
     r.saws = [...(r.saws ?? []), shiftSaw(s, tx - r.x, ty - r.y)];
+    changed = true;
+  }
+  for (const p of clip.platforms ?? []) {
+    const [ax, ay] = p.points[0];
+    const i = roomIndexAt(level, tx + ax, ty + ay);
+    if (i < 0) continue;
+    const r = level.rooms[i];
+    r.platforms = [...(r.platforms ?? []), shiftPlatform(p, tx - r.x, ty - r.y)];
     changed = true;
   }
   return changed;
@@ -386,6 +447,7 @@ export const roomIssues = (practice: LevelDef): string[] =>
 export const TOOL_SHORTCUTS: Partial<Record<EditorTool, [string, string?]>> = {
   '#': ['W', '1'], '^': ['X', '2'], saw: ['A', '3'], O: ['O', '4'], K: ['K', '5'], D: ['D', '6'], S: ['S', '7'],
   G: ['F', '8'], '=': ['C', '9'], J: ['J', '0'], erase: ['E'], select: ['V'], paste: ['P'], 'room+': ['R'],
+  '-': ['L'], '[': ['B'], ']': ['N'], '*': ['Y'], platform: ['M'], ')': ['I'],
 };
 
 /** The tool a bare key press selects (case-insensitive), if any. */
@@ -416,17 +478,22 @@ function sawCode(s: SawDef): string {
   return `{kind: 'path', points: [${s.points.map(pt).join(', ')}], speed: ${num(s.speed)}, radius: ${num(s.radius)}${s.mode ? `, mode: ${q(s.mode)}` : ''}}`;
 }
 
+const platformCode = (p: PlatformDef) =>
+  `{points: [${p.points.map(pt).join(', ')}], w: ${num(p.w)}, speed: ${num(p.speed)}${p.mode ? `, mode: ${q(p.mode)}` : ''}}`;
+
 /** Serializes a level as a complete `src/levels/<name>.ts` file in the same style as the built-in levels. */
 export function levelToCode(level: LevelDef): string {
   const L: string[] = [
     "import type { LevelDef } from '../types';",
     '',
     '// Legend: # solid  ^v<> spikes  = crumble  K key  D door  O dash orb  J jump pad',
-    '//         1-9 portal pair  S spawn/checkpoint  G goal  . empty',
+    '//         1-9 portal pair  S spawn/checkpoint  G goal  . empty  - one-way  [ ] switch blocks',
+    '//         * crystal (2 dashes)  ( ) u n wind left / right / up / down',
     `export const ${varNameFor(level.id)}: LevelDef = {`,
     `  id: ${JSON.stringify(level.id)},`,
     `  name: ${JSON.stringify(level.name)},`,
     `  subtitle: ${JSON.stringify(level.subtitle)},`,
+    ...(level.chapter ? [`  chapter: ${JSON.stringify(level.chapter)},`] : []),
     '  rooms: [',
   ];
   for (const r of level.rooms) {
@@ -434,6 +501,7 @@ export function levelToCode(level: LevelDef): string {
     if (r.hint) L.push(`      hint: ${JSON.stringify(r.hint)},`);
     L.push('      tiles: [', ...r.tiles.map((row) => `        ${q(row)},`), '      ],');
     if (r.saws?.length) L.push('      saws: [', ...r.saws.map((s) => `        ${sawCode(s)},`), '      ],');
+    if (r.platforms?.length) L.push('      platforms: [', ...r.platforms.map((p) => `        ${platformCode(p)},`), '      ],');
     L.push('    },');
   }
   L.push('  ],', '};', '');
@@ -518,6 +586,7 @@ export function parseLevelCode(text: string): LevelDef {
     };
     if (typeof r.hint === 'string') room.hint = r.hint;
     if (Array.isArray(r.saws) && r.saws.length) room.saws = r.saws;
+    if (Array.isArray(r.platforms) && r.platforms.length) room.platforms = r.platforms;
     return room;
   });
   const name = typeof d.name === 'string' ? d.name : 'Custom Level';
@@ -525,6 +594,7 @@ export function parseLevelCode(text: string): LevelDef {
     id: typeof d.id === 'string' ? d.id : slugify(name),
     name,
     subtitle: typeof d.subtitle === 'string' ? d.subtitle : 'Made in the editor',
+    ...(typeof d.chapter === 'string' && d.chapter ? { chapter: d.chapter } : {}),
     rooms,
   };
 }

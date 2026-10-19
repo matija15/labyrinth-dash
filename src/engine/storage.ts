@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LevelDef, SaveData } from '../types';
+import type { Clip } from './editor';
+import type { Ghost } from './ghost';
 import { emptySave } from './save';
 
 const KEY = '@labyrinth-dash/save/v1';
@@ -49,4 +51,41 @@ export async function loadEditorDraft(): Promise<EditorDraft | null> {
 
 export function writeEditorDraft(draft: EditorDraft) {
   return AsyncStorage.setItem(EDITOR_KEY, JSON.stringify(draft)).catch(() => undefined);
+}
+
+const STAMPS_KEY = '@labyrinth-dash/stamps/v1';
+
+/** A saved block the editor can paste again (tiles + saws + platforms). */
+export interface Stamp {
+  name: string;
+  clip: Clip;
+}
+
+export async function loadStamps(): Promise<Stamp[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STAMPS_KEY);
+    const data = raw ? JSON.parse(raw) : [];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeStamps(stamps: Stamp[]) {
+  return AsyncStorage.setItem(STAMPS_KEY, JSON.stringify(stamps)).catch(() => undefined);
+}
+
+const ghostKey = (levelId: string) => `@labyrinth-dash/ghost/v1/${levelId}`;
+
+export async function loadGhost(levelId: string): Promise<Ghost | null> {
+  try {
+    const raw = await AsyncStorage.getItem(ghostKey(levelId));
+    return raw ? (JSON.parse(raw) as Ghost) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeGhost(levelId: string, ghost: Ghost) {
+  return AsyncStorage.setItem(ghostKey(levelId), JSON.stringify(ghost)).catch(() => undefined);
 }

@@ -1,4 +1,4 @@
-import type { LevelDef, Rect, SawDef, Vec2 } from '../types';
+import type { LevelDef, PlatformDef, Rect, SawDef, Vec2 } from '../types';
 import { PLAYER_H, PLAYER_W, TILE } from './constants';
 
 export enum T {
@@ -14,7 +14,23 @@ export enum T {
   Void = 8,
   /** Void directly below an open room floor: falling in kills. */
   Pit = 9,
+  /** Solid only when landing on it from above. */
+  OneWay = 10,
+  /** Switch blocks: A is solid at the start, B after the first dash; every dash swaps them. */
+  SwitchA = 11,
+  SwitchB = 12,
+  WindL = 13,
+  WindR = 14,
+  WindU = 15,
+  WindD = 16,
 }
+
+export const WIND_DIR: Partial<Record<T, Vec2>> = {
+  [T.WindL]: { x: -1, y: 0 }, [T.WindR]: { x: 1, y: 0 }, [T.WindU]: { x: 0, y: -1 }, [T.WindD]: { x: 0, y: 1 },
+};
+const TILE_OF: Record<string, T> = {
+  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD,
+};
 
 export interface Room {
   index: number;
@@ -23,6 +39,7 @@ export interface Room {
   rect: Rect;
   spawns: Vec2[];
   saws: SawDef[];
+  platforms: PlatformDef[];
   /** Room origin in world tiles (saw coordinates are room-relative). */
   tx: number;
   ty: number;
@@ -53,6 +70,11 @@ export interface World {
   pads: Pad[];
   portals: Portal[];
   crumbles: Crumble[];
+  crystals: Orb[];
+  /** Tile indices of every switch block (A and B). */
+  switches: number[];
+  /** Wind tiles, for drawing. */
+  winds: { tx: number; ty: number; dir: Vec2 }[];
   goal: Vec2 | null;
   start: Vec2;
 }
@@ -119,7 +141,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
   const crumbleOf = new Int16Array(w * h).fill(-1);
   const world: World = {
     w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf,
-    rooms: [], keys: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [],
+    rooms: [], keys: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [], crystals: [], switches: [], winds: [],
     goal: null, start: { x: 0, y: 0 },
   };
   const portalFirst = new Map<string, number>();
@@ -131,7 +153,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
     const room: Room = {
       index, id: def.id,
       rect: { x: rx * TILE, y: ry * TILE, w: def.tiles[0].length * TILE, h: def.tiles.length * TILE },
-      spawns: [], saws: def.saws ?? [], tx: rx, ty: ry,
+      spawns: [], saws: def.saws ?? [], platforms: def.platforms ?? [], tx: rx, ty: ry,
     };
     def.tiles.forEach((row, y) => {
       for (let x = 0; x < row.length; x++) {
@@ -153,6 +175,13 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
           doorTiles.push(i);
         } else if (ch === 'K') world.keys.push({ x: cx, y: cy, room: index });
         else if (ch === 'O') world.orbs.push({ x: cx, y: cy });
+        else if (ch === '*') world.crystals.push({ x: cx, y: cy });
+        else if (TILE_OF[ch] !== undefined) {
+          tile = TILE_OF[ch];
+          if (tile === T.SwitchA || tile === T.SwitchB) world.switches.push(i);
+          const dir = WIND_DIR[tile];
+          if (dir) world.winds.push({ tx, ty, dir });
+        }
         else if (ch === 'J') world.pads.push({ tx, ty });
         else if (ch === 'S') room.spawns.push(spawnPos(tx, ty));
         else if (ch === 'G') world.goal = { x: cx, y: cy };
