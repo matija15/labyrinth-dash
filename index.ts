@@ -1,15 +1,5 @@
-import { registerRootComponent } from 'expo';
-import { Platform } from 'react-native';
+// Platform-specific startup: Metro picks src/boot.web.ts on web and src/boot.ts on iOS/Android,
+// so Skia's web loader (CanvasKit, which imports Node's "fs") never enters the phone bundle.
+import { boot } from './src/boot';
 
-if (Platform.OS === 'web') {
-  // Skia on web needs CanvasKit (wasm) loaded before any Skia code runs.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { LoadSkiaWeb } = require('@shopify/react-native-skia/lib/module/web');
-  LoadSkiaWeb({ locateFile: (file: string) => `/${file}` }).then(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    registerRootComponent(require('./App').default);
-  });
-} else {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  registerRootComponent(require('./App').default);
-}
+boot();
