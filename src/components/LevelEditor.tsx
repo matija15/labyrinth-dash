@@ -642,6 +642,7 @@ function SaveModal({
       <View style={styles.row}>
         <Text style={[styles.label, styles.fieldLabel]}>Par (s)</Text>
         <TextInput
+          key={level.id}
           defaultValue={level.par ? String(level.par) : ''}
           onChangeText={onPar}
           style={[styles.input, { flex: 1 }]}
