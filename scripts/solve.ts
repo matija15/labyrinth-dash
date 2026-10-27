@@ -74,7 +74,7 @@ function key(n: Node) {
   return [
     g.room.index, Math.round(p.x / 4), Math.round(p.y / 4), Math.round(p.vx / 45), Math.round(p.vy / 60), p.dashes,
     g.phase, Math.round((g as unknown as { transition: { t: number } }).transition.t * 40),
-    p.onGround ? 1 : 0, p.wallDir, p.facing, p.running ? 1 : 0, p.wallDrop ? 1 : 0, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState), g.switchFlipped ? 1 : 0, sum(g.crystalCooldown.map((c) => c > 0)),
+    p.onGround ? 1 : 0, p.wallDir, p.facing, p.running ? 1 : 0, p.wallDrop ? 1 : 0, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState), g.switchFlipped ? 1 : 0, g.gravity, sum(g.crystalCooldown.map((c) => c > 0)),
   ].join(',');
 }
 

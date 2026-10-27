@@ -48,7 +48,7 @@ export interface GameOptions {
   assist?: AssistSettings;
 }
 
-interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean }
+interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean; gravity: number }
 
 interface Camera { x: number; y: number }
 
@@ -95,6 +95,10 @@ export class Game {
   /** Per room: seconds its echo doors stay open. */
   echoOpen: number[];
   private attempt: number[] = [];
+  /** 1 = normal, -1 = flipped (falls up). */
+  gravity = 1;
+  /** Gate tile type the player's center is inside (0 = none), so a gate fires once per crossing. */
+  private gateLock = 0;
   /** Echo-door tiles that closed around the player; passable until the player leaves them. */
   private echoLatch: number[] = [];
   /** Switch blocks: false → `[` blocks are solid, true → `]` blocks. Swaps on every dash. */
@@ -305,7 +309,10 @@ export class Game {
     const p = this.player;
     const held = input.jumpHeld && this.holdIsJump;
     const wasGround = p.onGround;
-    p.onGround = p.vy >= 0 && (this.solidRect(p.x, p.y + 1, C.PLAYER_W, C.PLAYER_H) || this.oneWayTop(p.x, p.y + C.PLAYER_H, p.y + C.PLAYER_H + 1) !== null);
+    const gd = this.gravity;
+    p.onGround = gd > 0
+      ? p.vy >= 0 && (this.solidRect(p.x, p.y + 1, C.PLAYER_W, C.PLAYER_H) || this.oneWayTop(p.x, p.y + C.PLAYER_H, p.y + C.PLAYER_H + 1) !== null)
+      : p.vy <= 0 && this.solidRect(p.x, p.y - 1, C.PLAYER_W, C.PLAYER_H);
     p.wallDir = p.onGround ? 0 : this.wallDirAt(1);
 
     if (p.onGround) {
@@ -351,14 +358,14 @@ export class Game {
     if (p.dashTimer > 0) {
       p.dashTimer -= dt;
       // Grounded dash-jump keeps the dash's horizontal momentum.
-      if (p.jumpBuffer > 0 && p.coyote > 0 && p.dashDir.y >= 0) {
+      if (p.jumpBuffer > 0 && p.coyote > 0 && p.dashDir.y * gd >= 0) {
         p.dashTimer = 0;
         this.jump();
       } else if (p.dashTimer <= 0) {
         const len = Math.hypot(p.dashDir.x, p.dashDir.y) || 1;
         p.vx = p.vx === 0 ? 0 : (p.dashDir.x / len) * C.DASH_END_SPEED;
         p.vy = p.vy === 0 ? 0 : (p.dashDir.y / len) * C.DASH_END_SPEED;
-        if (p.vy < 0) p.vy *= C.DASH_UP_END_MULT;
+        if (p.vy * gd < 0) p.vy *= C.DASH_UP_END_MULT;
       } else {
         this.spawnGhost(dt);
       }
@@ -374,17 +381,18 @@ export class Game {
       p.vx = approach(p.vx, target, rate * dt);
 
       let maxFall = C.MAX_FALL;
-      const clinging = p.wallDir !== 0 && p.vy >= 0 && (this.autoRun ? !p.wallDrop : moveX === p.wallDir);
+      const clinging = p.wallDir !== 0 && p.vy * gd >= 0 && (this.autoRun ? !p.wallDrop : moveX === p.wallDir);
       if (clinging) maxFall = C.WALL_SLIDE_MAX;
       const g = held && Math.abs(p.vy) < C.HALF_GRAV_THRESHOLD ? C.GRAVITY * 0.5 : C.GRAVITY;
-      p.vy = p.vy > maxFall ? approach(p.vy, maxFall, C.GRAVITY * 2 * dt) : approach(p.vy, maxFall, g * dt);
+      const fall = p.vy * gd;
+      p.vy = gd * (fall > maxFall ? approach(fall, maxFall, C.GRAVITY * 2 * dt) : approach(fall, maxFall, g * dt));
       if (clinging && this.rng() < 0.25)
         this.burst(p.x + (p.wallDir > 0 ? C.PLAYER_W : 0), p.y + C.PLAYER_H, 1, DUST_COLOR, 12, -Math.PI / 2, 1);
 
       if (wind.y < 0) p.vy = Math.max(C.UPDRAFT_MAX, Math.min(p.vy, p.vy - C.UPDRAFT_ACCEL * dt));
 
       if (p.varJumpTimer > 0) {
-        if (held) p.vy = Math.min(p.vy, p.varJumpSpeed);
+        if (held) p.vy = gd * Math.min(p.vy * gd, p.varJumpSpeed * gd);
         else p.varJumpTimer = 0;
         p.varJumpTimer -= dt;
       }
@@ -418,7 +426,7 @@ export class Game {
     const p = this.player;
     p.jumpBuffer = 0;
     p.coyote = 0;
-    p.vy = C.JUMP_SPEED;
+    p.vy = C.JUMP_SPEED * this.gravity;
     p.varJumpSpeed = p.vy;
     p.varJumpTimer = C.VAR_JUMP_TIME;
     p.scaleX = 0.7;
@@ -432,7 +440,7 @@ export class Game {
     p.jumpBuffer = 0;
     p.wallDrop = false;
     p.vx = -wall * C.WALL_JUMP_H;
-    p.vy = C.JUMP_SPEED;
+    p.vy = C.JUMP_SPEED * this.gravity;
     p.varJumpSpeed = p.vy;
     p.varJumpTimer = C.VAR_JUMP_TIME;
     p.forceMoveTimer = C.WALL_JUMP_FORCE_TIME;
@@ -474,7 +482,7 @@ export class Game {
     p.wallDrop = true;
     p.wallDropDir = p.wallDir;
     p.vx = 0;
-    p.vy = Math.max(p.vy, C.WALL_DROP_SPEED);
+    p.vy = this.gravity * Math.max(p.vy * this.gravity, C.WALL_DROP_SPEED);
     p.varJumpTimer = 0;
     p.forceMoveTimer = 0;
     p.scaleX = 0.8;
@@ -545,11 +553,12 @@ export class Game {
       return;
     }
     // Ledge correction: slip up and over small lips while dashing/moving upward.
-    if (p.vy <= 0 && (p.dashTimer > 0 || p.vy < 0)) {
+    const up = -this.gravity;
+    if (p.vy * up >= 0 && (p.dashTimer > 0 || p.vy * up > 0)) {
       for (let d = 1; d <= C.CORNER_CORRECTION; d++) {
-        if (!this.solidRect(nx, p.y - d, C.PLAYER_W, C.PLAYER_H)) {
+        if (!this.solidRect(nx, p.y + d * up, C.PLAYER_W, C.PLAYER_H)) {
           p.x = nx;
-          p.y -= d;
+          p.y += d * up;
           return;
         }
       }
@@ -565,7 +574,7 @@ export class Game {
     if (amount === 0) return;
     const ny = p.y + amount;
     const throughOneWay = p.dashTimer > 0 && p.dashDir.y > 0 && p.dashDir.x === 0;
-    if (amount > 0 && !throughOneWay) {
+    if (amount > 0 && this.gravity > 0 && !throughOneWay) {
       const top = this.oneWayTop(p.x, p.y + C.PLAYER_H, ny + C.PLAYER_H);
       if (top !== null && !this.solidRect(p.x, top - C.PLAYER_H, C.PLAYER_W, C.PLAYER_H)) {
         p.y = top - C.PLAYER_H;
@@ -578,7 +587,7 @@ export class Game {
       return;
     }
     // Corner correction: nudge around ceiling corners when jumping.
-    if (amount < 0) {
+    if (amount * this.gravity < 0) {
       for (let d = 1; d <= C.CORNER_CORRECTION; d++) {
         for (const s of [-1, 1]) {
           if (!this.solidRect(p.x + d * s, ny, C.PLAYER_W, C.PLAYER_H)) {
@@ -591,7 +600,7 @@ export class Game {
     }
     p.y = this.stopAt('y', p.y, ny);
     if (this.solidRect(p.x, p.y, C.PLAYER_W, C.PLAYER_H)) p.y = ny - amount;
-    if (amount < 0) p.varJumpTimer = 0;
+    if (amount * this.gravity < 0) p.varJumpTimer = 0;
     p.vy = 0;
   }
 
@@ -729,7 +738,7 @@ export class Game {
 
   private touchCrumbleBelow() {
     const p = this.player;
-    const ty = Math.floor((p.y + C.PLAYER_H + 1) / C.TILE);
+    const ty = Math.floor((this.gravity > 0 ? p.y + C.PLAYER_H + 1 : p.y - 1) / C.TILE);
     this.triggerCrumbleAt(Math.floor(p.x / C.TILE), ty);
     this.triggerCrumbleAt(Math.floor((p.x + C.PLAYER_W - 0.001) / C.TILE), ty);
   }
@@ -839,6 +848,14 @@ export class Game {
       }
     }
 
+    const gate = tileAt(this.world, Math.floor(cx / C.TILE), Math.floor(cy / C.TILE));
+    if (gate === T.GravGate || gate === T.RevGate) {
+      if (this.gateLock !== gate) {
+        this.gateLock = gate;
+        this.crossGate(gate, cx, cy);
+      }
+    } else this.gateLock = 0;
+
     const goal = this.world.goal;
     if (goal && Math.abs(goal.x - cx) < 7 && Math.abs(goal.y - cy) < 8) {
       this.phase = 'complete';
@@ -878,6 +895,26 @@ export class Game {
       for (let tx = Math.floor(p.x / C.TILE); tx <= Math.floor((p.x + C.PLAYER_W - 0.001) / C.TILE); tx++)
         if (tileAt(this.world, tx, ty) === T.EchoDoor) under.push(ty * this.world.w + tx);
     this.echoLatch = under.filter((i) => open || this.echoLatch.includes(i));
+  }
+
+  private crossGate(gate: T, cx: number, cy: number) {
+    const p = this.player;
+    if (gate === T.GravGate) {
+      this.gravity = -this.gravity;
+      p.vy *= 0.3;
+      p.varJumpTimer = 0;
+      p.coyote = 0;
+    } else {
+      p.facing = -p.facing;
+      p.vx = -p.vx;
+      // Manual controls get a short forced turn so the gate still bites while a direction is held.
+      p.forceMoveDir = p.facing;
+      p.forceMoveTimer = this.autoRun ? 0 : C.WALL_JUMP_FORCE_TIME * 2;
+    }
+    p.scaleX = 1.3;
+    p.scaleY = 0.7;
+    this.events.push({ type: 'portal' });
+    this.burst(cx, cy, 10, PLAYER_COLOR, 45, 0, Math.PI * 2);
   }
 
   private revealFake(group: number) {
@@ -943,6 +980,7 @@ export class Game {
     this.switchGhost = [];
     this.resetEchoRun();
     if (this.echo) this.echo.i = 0;
+    this.gateLock = 0;
     this.snapCamera();
     this.events.push({ type: 'respawn' });
     this.burst(this.checkpoint.x + 3, this.checkpoint.y + 3, 10, PLAYER_COLOR, 40, 0, Math.PI * 2, -1);
@@ -956,6 +994,8 @@ export class Game {
     this.keysTaken.fill(false);
     this.doorsOpen.fill(false);
     this.fakeRevealed.fill(false);
+    this.gravity = 1;
+    this.gateLock = 0;
     this.echo = null;
     this.resetEchoRun();
     this.switchFlipped = false;
@@ -982,7 +1022,7 @@ export class Game {
   }
 
   private takeSnapshot(): Snapshot {
-    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], doorsOpen: [...this.doorsOpen], switchFlipped: this.switchFlipped };
+    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], doorsOpen: [...this.doorsOpen], switchFlipped: this.switchFlipped, gravity: this.gravity };
   }
 
   private restoreSnapshot() {
@@ -990,6 +1030,7 @@ export class Game {
     this.keysTaken = [...this.snapshot.keysTaken];
     this.doorsOpen = [...this.snapshot.doorsOpen];
     this.switchFlipped = this.snapshot.switchFlipped;
+    this.gravity = this.snapshot.gravity;
   }
 
   private checkRoom() {
@@ -1000,7 +1041,7 @@ export class Game {
     if (cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h) return;
     const next = roomAt(this.world, cx, cy);
     if (!next) {
-      if (cy >= r.y + r.h) this.die();
+      if (this.gravity > 0 ? cy >= r.y + r.h : cy < r.y) this.die();
       return;
     }
     const nr = next.rect;
@@ -1009,9 +1050,17 @@ export class Game {
     else if (cx < r.x) p.x = Math.min(p.x, nr.x + nr.w - C.PLAYER_W - 1);
     if (cy < r.y) {
       p.y = Math.min(p.y, nr.y + nr.h - C.PLAYER_H - 2);
-      p.vy = Math.min(p.vy, C.JUMP_SPEED * 1.15);
-      p.dashTimer = 0;
-    } else if (cy >= r.y + r.h) p.y = Math.max(p.y, nr.y + 1);
+      if (this.gravity > 0) {
+        p.vy = Math.min(p.vy, C.JUMP_SPEED * 1.15);
+        p.dashTimer = 0;
+      }
+    } else if (cy >= r.y + r.h) {
+      p.y = Math.max(p.y, nr.y + 1);
+      if (this.gravity < 0) {
+        p.vy = Math.max(p.vy, -C.JUMP_SPEED * 1.15);
+        p.dashTimer = 0;
+      }
+    }
 
     this.room = next;
     this.plats = this.platRects(next);

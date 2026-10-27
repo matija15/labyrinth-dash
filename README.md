@@ -136,6 +136,7 @@ hitboxes and physics are identical in every skin.
 - Switch blocks [B] `[` / [N] `]`: each dash swaps which colour is solid.
 - Fake wall [H] `%`: looks like a wall but you can run through it; found walls stay revealed.
 - Echo plate [U] `P` and echo door [G] `E`: every death in a room with plates leaves an echo that replays your last try. Only the echo presses plates; a pressed plate opens that room's echo doors for 1.5 s.
+- Gravity gate [Z] `F` and reverse gate [Q] `R`: crossing a gravity gate flips gravity (you fall up and stand on ceilings, jumps go down); a reverse gate turns your run around. Checkpoints remember gravity.
 - Lantern [Y] `*`: refills two dashes, relights after 3.5 s.
 - Wind [I] `(` `)` `u` `n`: pushes left / right, updraft, downdraft. Press I again to cycle the direction.
 - `src/levels/dev/contraptions.ts` is a demo of all of them.

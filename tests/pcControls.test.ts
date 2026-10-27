@@ -106,14 +106,14 @@ test('editor tool hotkeys', () => {
   const expect: Record<string, string> = {
     w: '#', '1': '#', x: '^', '2': '^', a: 'saw', '3': 'saw', o: 'O', '4': 'O', k: 'K', '5': 'K', d: 'D', '6': 'D',
     s: 'S', '7': 'S', f: 'G', '8': 'G', c: '=', '9': '=', j: 'J', '0': 'J', e: 'erase', v: 'select', p: 'paste', r: 'room+',
-    l: '-', b: '[', n: ']', y: '*', m: 'platform', i: ')',
+    l: '-', b: '[', n: ']', y: '*', m: 'platform', i: ')', h: '%', u: 'P', g: 'E', z: 'F', q: 'R',
   };
   for (const [key, tool] of Object.entries(expect)) {
     assert.equal(toolForKey(key), tool, key);
     assert.equal(toolForKey(key.toUpperCase()), tool, key.toUpperCase());
   }
   assert.equal(toolForKey('t'), null, 'T is room playtest');
-  assert.equal(toolForKey('q'), null);
+  assert.equal(toolForKey('/'), null);
   const keys = Object.values(TOOL_SHORTCUTS).flatMap((v) => v!.filter(Boolean));
   assert.equal(new Set(keys).size, keys.length, 'shortcuts are unique');
 });

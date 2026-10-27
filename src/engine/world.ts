@@ -28,13 +28,17 @@ export enum T {
   /** Pressed by your echo (never by you); opens the room's echo doors. */
   EchoPlate = 18,
   EchoDoor = 19,
+  /** Flip World: crossing flips gravity. */
+  GravGate = 20,
+  /** Flip World: crossing reverses your run. */
+  RevGate = 21,
 }
 
 export const WIND_DIR: Partial<Record<T, Vec2>> = {
   [T.WindL]: { x: -1, y: 0 }, [T.WindR]: { x: 1, y: 0 }, [T.WindU]: { x: 0, y: -1 }, [T.WindD]: { x: 0, y: 1 },
 };
 const TILE_OF: Record<string, T> = {
-  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD, '%': T.FakeWall, P: T.EchoPlate, E: T.EchoDoor,
+  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD, '%': T.FakeWall, P: T.EchoPlate, E: T.EchoDoor, F: T.GravGate, R: T.RevGate,
 };
 
 export interface Room {

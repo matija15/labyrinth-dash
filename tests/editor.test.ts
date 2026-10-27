@@ -102,7 +102,7 @@ for (const level of LEVELS) {
 function readdirLevelFile(id: string) {
   const names: Record<string, string> = {
     'first-light': 'firstLight', 'dash-lab': 'dashLab', labyrinth: 'labyrinth',
-    switchback: 'switchback', 'saw-mill': 'sawMill', undercroft: 'undercroft', contraptions: 'contraptions', 'thornwood-maze': 'thornwoodMaze', 'echo-chamber': 'echoChamber',
+    switchback: 'switchback', 'saw-mill': 'sawMill', undercroft: 'undercroft', contraptions: 'contraptions', 'thornwood-maze': 'thornwoodMaze', 'echo-chamber': 'echoChamber', 'flip-side': 'flipSide',
   };
   return readFileSync(join(__dirname, '..', 'src', 'levels', 'dev', `${names[id]}.ts`), 'utf8');
 }

@@ -102,6 +102,10 @@ function makePaints({ theme: T, player: PL }: Look) {
     artGhost: paint('#ffffff'),
     ghost: paint(COLORS.player),
     echo: paint(MECH.echo, { alpha: 0.55 }),
+    grav: paint(MECH.grav, { alpha: 0.22 }),
+    gravLine: paint(MECH.grav, { stroke: 0.7, alpha: 0.8 }),
+    rev: paint(MECH.rev, { alpha: 0.22 }),
+    revLine: paint(MECH.rev, { stroke: 0.7, alpha: 0.8 }),
     echoGlow: paint(MECH.echo, { blur: 3, alpha: 0.6 }),
     echoLine: paint(MECH.echo, { stroke: 0.6, alpha: 0.6 }),
     particle: paint('#ffffff'),
@@ -120,7 +124,7 @@ function makePaints({ theme: T, player: PL }: Look) {
 
 const UI = { text: '#e8ecff', dim: '#7c86b0' };
 /** Colours of the newer mechanics (shared by every theme, like hazards they stay readable everywhere). */
-export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff', echo: '#b18cff' };
+export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff', echo: '#b18cff', grav: '#38bdf8', rev: '#a3e635' };
 
 const getPaints = (look: Look) => {
   const key = `${look.theme.id}/${look.player.id}`;
@@ -389,9 +393,24 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     c.drawRect(r, P.echo);
   }
   for (let i = 0; i < world.grid.length; i++) {
-    if (world.grid[i] !== T.EchoDoor) continue;
+    const t = world.grid[i];
+    if (t !== T.EchoDoor && t !== T.GravGate && t !== T.RevGate) continue;
     const x = (i % world.w) * TILE;
     const y = Math.floor(i / world.w) * TILE;
+    if (t !== T.EchoDoor) {
+      // Gates: a tinted band with chevrons (up/down for gravity, left/right for reverse) drifting over time
+      const grav = t === T.GravGate;
+      c.drawRect(Skia.XYWHRect(x + 1, y, TILE - 2, TILE), grav ? P.grav : P.rev);
+      const s = ((game.worldTime * 6) % 4) - 2;
+      const line = grav ? P.gravLine : P.revLine;
+      if (grav) {
+        c.drawLine(x + 2, y + 4 + s, x + 4, y + 2 + s, line); c.drawLine(x + 4, y + 2 + s, x + 6, y + 4 + s, line);
+      } else {
+        c.drawLine(x + 2 + s, y + 4, x + 4 + s, y + 2, line); c.drawLine(x + 2 + s, y + 4, x + 4 + s, y + 6, line);
+        c.drawLine(x + 6 - s, y + 4, x + 4 - s, y + 2, line); c.drawLine(x + 6 - s, y + 4, x + 4 - s, y + 6, line);
+      }
+      continue;
+    }
     if (game.echoOpen[world.roomOf[i]] > 0) c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.echoLine);
     else {
       c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.echo);
@@ -652,7 +671,14 @@ export function renderFrame(f: FrameContext): SkPicture {
     P.ghost.setColor(hexWithAlpha(f.look.player.color, 0.3));
     c.drawRect(Skia.XYWHRect(f.ghost.x, f.ghost.y, PLAYER_W, PLAYER_H), P.ghost);
   }
+  const upsideDown = game.gravity < 0;
+  if (upsideDown) {
+    c.save();
+    c.translate(0, (game.player.y + PLAYER_H / 2) * 2);
+    c.scale(1, -1);
+  }
   drawPlayer(c, game, P, f.look, f.art);
+  if (upsideDown) c.restore();
   drawParticles(c, game, P);
   c.restore();
 

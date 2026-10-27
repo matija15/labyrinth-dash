@@ -10,6 +10,7 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `G` goal         `.` or space: empty
  *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
  *  `%` fake wall (looks solid, is passable)   `P` echo plate   `E` echo door (open while your echo holds a plate)
+ *  `F` gravity gate (flips gravity)   `R` reverse gate (reverses your run)
  *  `*` lantern (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =

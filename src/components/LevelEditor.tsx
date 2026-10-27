@@ -45,6 +45,8 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: '%', label: 'Fake Wall', color: COLORS.solidEdge },
   { tool: 'P', label: 'Echo Plate', color: MECH.echo },
   { tool: 'E', label: 'Echo Door', color: MECH.echo },
+  { tool: 'F', label: 'Gravity Gate', color: MECH.grav },
+  { tool: 'R', label: 'Reverse Gate', color: MECH.rev },
   { tool: '-', label: 'One-Way', color: COLORS.solidEdge },
   { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
   { tool: '[', label: 'Switch A', color: MECH.switchA },
