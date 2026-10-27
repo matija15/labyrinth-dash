@@ -48,7 +48,7 @@ export interface GameOptions {
   assist?: AssistSettings;
 }
 
-interface Snapshot { heldKeys: number; keysTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean; gravity: number }
+interface Snapshot { heldKeys: number; keysTaken: boolean[]; pagesTaken: boolean[]; doorsOpen: boolean[]; switchFlipped: boolean; gravity: number }
 
 interface Camera { x: number; y: number }
 
@@ -82,6 +82,10 @@ export class Game {
   deaths = 0;
   heldKeys = 0;
   keysTaken: boolean[];
+  /** Storybook pages picked up this run (dropped again if you die before leaving their room). */
+  pagesTaken: boolean[];
+  /** Seconds of slow motion left (game feel only: the screen paces steps slower, the simulation is unchanged). */
+  slowmo = 0;
   doorsOpen: boolean[];
   orbCooldown: number[];
   crumbleTimer: number[];
@@ -136,6 +140,7 @@ export class Game {
     this.room = this.world.rooms[0];
     this.checkpoint = { ...this.world.start };
     this.keysTaken = this.world.keys.map(() => false);
+    this.pagesTaken = this.world.pages.map(() => false);
     this.doorsOpen = this.world.doors.map(() => false);
     this.orbCooldown = this.world.orbs.map(() => 0);
     this.crumbleTimer = this.world.crumbles.map(() => 0);
@@ -193,6 +198,7 @@ export class Game {
     }
 
     this.worldTime += dt;
+    if (this.slowmo > 0) this.slowmo -= dt;
     if (this.phase !== 'playing') {
       this.time += dt;
       this.phaseTimer -= dt;
@@ -793,6 +799,15 @@ export class Game {
       }
     });
 
+    this.world.pages.forEach((pg, i) => {
+      if (!this.pagesTaken[i] && Math.abs(pg.x - cx) < 6 && Math.abs(pg.y - cy) < 7) {
+        this.pagesTaken[i] = true;
+        this.slowmo = 0.12;
+        this.events.push({ type: 'page' });
+        this.burst(pg.x, pg.y, 18, KEY_COLOR, 55, 0, Math.PI * 2);
+      }
+    });
+
     this.world.orbs.forEach((o, i) => {
       if (this.orbCooldown[i] <= 0 && p.dashes < 1 && Math.hypot(o.x - cx, o.y - cy) < 7) {
         this.orbCooldown[i] = C.ORB_RESPAWN;
@@ -866,6 +881,11 @@ export class Game {
     }
   }
 
+  /** Indices of the pages picked up this run. */
+  pagesFound(): number[] {
+    return this.pagesTaken.flatMap((t, i) => (t ? [i] : []));
+  }
+
   /** Where the echo is this step, or null when there is none (or its replay has ended). */
   echoPos(): { x: number; y: number; facing: number } | null {
     const e = this.echo;
@@ -885,7 +905,7 @@ export class Game {
       e.i++;
       for (const pl of this.world.plates) {
         if (pl.room !== this.room.index || !overlaps({ x: pl.tx * C.TILE, y: pl.ty * C.TILE, w: C.TILE, h: C.TILE }, box)) continue;
-        if (!(this.echoOpen[pl.room] > 0)) this.events.push({ type: 'unlock' });
+        if (!(this.echoOpen[pl.room] > 0)) this.events.push({ type: 'plate' });
         this.echoOpen[pl.room] = C.ECHO_HOLD;
       }
     } else if (e) e.i = e.frames.length / 3 + 1;
@@ -913,13 +933,14 @@ export class Game {
     }
     p.scaleX = 1.3;
     p.scaleY = 0.7;
-    this.events.push({ type: 'portal' });
+    if (gate === T.GravGate) this.slowmo = 0.15;
+    this.events.push({ type: gate === T.GravGate ? 'gravity' : 'reverse' });
     this.burst(cx, cy, 10, PLAYER_COLOR, 45, 0, Math.PI * 2);
   }
 
   private revealFake(group: number) {
     this.fakeRevealed[group] = true;
-    this.events.push({ type: 'unlock' });
+    this.events.push({ type: 'reveal' });
     for (const i of this.world.fakes[group])
       this.burst((i % this.world.w) * C.TILE + 4, Math.floor(i / this.world.w) * C.TILE + 4, 2, DUST_COLOR, 30, 0, Math.PI * 2);
   }
@@ -992,6 +1013,8 @@ export class Game {
     this.checkpoint = { ...this.world.start };
     this.heldKeys = 0;
     this.keysTaken.fill(false);
+    this.pagesTaken.fill(false);
+    this.slowmo = 0;
     this.doorsOpen.fill(false);
     this.fakeRevealed.fill(false);
     this.gravity = 1;
@@ -1022,12 +1045,13 @@ export class Game {
   }
 
   private takeSnapshot(): Snapshot {
-    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], doorsOpen: [...this.doorsOpen], switchFlipped: this.switchFlipped, gravity: this.gravity };
+    return { heldKeys: this.heldKeys, keysTaken: [...this.keysTaken], pagesTaken: [...this.pagesTaken], doorsOpen: [...this.doorsOpen], switchFlipped: this.switchFlipped, gravity: this.gravity };
   }
 
   private restoreSnapshot() {
     this.heldKeys = this.snapshot.heldKeys;
     this.keysTaken = [...this.snapshot.keysTaken];
+    this.pagesTaken = [...this.snapshot.pagesTaken];
     this.doorsOpen = [...this.snapshot.doorsOpen];
     this.switchFlipped = this.snapshot.switchFlipped;
     this.gravity = this.snapshot.gravity;

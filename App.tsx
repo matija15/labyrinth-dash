@@ -7,9 +7,10 @@ import { GameScreen } from './src/components/GameScreen';
 import { LevelEditor } from './src/components/LevelEditor';
 import { LevelSelect } from './src/components/LevelSelect';
 import { SkinPicker } from './src/components/SkinPicker';
+import { Storybook } from './src/components/Storybook';
 import { COLORS } from './src/components/renderer';
-import { emptySave } from './src/engine/save';
-import { loadSave, resetSave, writeSave } from './src/engine/storage';
+import { emptySave, pagesFound } from './src/engine/save';
+import { loadDeathMarks, loadSave, resetSave, writeDeathMarks, writeSave, type DeathMarks } from './src/engine/storage';
 import { DEV_TOOLS, packLevels, RELEASE_LEVELS, type LevelPack } from './src/levels';
 import type { LevelDef, SaveData } from './src/types';
 
@@ -20,10 +21,20 @@ export default function App() {
   const [skins, setSkins] = useState(false);
   const [pack, setPack] = useState<LevelPack>('release');
   const [playtest, setPlaytest] = useState<{ level: LevelDef; run: number } | null>(null);
-  const [deathMarks, setDeathMarks] = useState<[number, number][]>([]);
+  const [story, setStory] = useState(false);
+  const [deathMarks, setDeathMarks] = useState<DeathMarks>({});
 
   useEffect(() => {
     loadSave().then(setSave);
+    if (DEV_TOOLS) loadDeathMarks().then((m) => setDeathMarks((cur) => ({ ...m, ...cur })));
+  }, []);
+
+  const updateDeathMarks = useCallback((fn: (m: DeathMarks) => DeathMarks) => {
+    setDeathMarks((m) => {
+      const next = fn(m);
+      void writeDeathMarks(next);
+      return next;
+    });
   }, []);
 
   const onSave = useCallback((next: SaveData) => {
@@ -57,7 +68,7 @@ export default function App() {
                 onPlaytest={(l) => setPlaytest((p) => ({ level: l, run: (p?.run ?? 0) + 1 }))}
                 onExit={() => setEditing(false)}
                 deathMarks={deathMarks}
-                onClearDeathMarks={() => setDeathMarks([])}
+                onClearDeathMarks={(id) => updateDeathMarks(({ [id]: _, ...rest }) => rest)}
               />
               {playtest && (
                 <View style={StyleSheet.absoluteFill}>
@@ -70,11 +81,16 @@ export default function App() {
                     onSave={noop}
                     onExit={() => setPlaytest(null)}
                     onNext={noop}
-                    onDeath={(x, y) => setDeathMarks((m) => [...m.slice(-499), [x, y]])}
+                    onDeath={(x, y) => {
+                      const id = playtest.level.id;
+                      updateDeathMarks((m) => ({ ...m, [id]: [...(m[id] ?? []).slice(-1999), [x, y]] }));
+                    }}
                   />
                 </View>
               )}
             </>
+          ) : save && story ? (
+            <Storybook found={pagesFound(save, RELEASE_IDS)} onBack={() => setStory(false)} />
           ) : save && skins ? (
             <SkinPicker save={save} releaseIds={RELEASE_IDS} onSave={onSave} onBack={() => setSkins(false)} />
           ) : save ? (
@@ -91,6 +107,9 @@ export default function App() {
               onAudio={(audio) => onSave({ ...save, audio })}
               onAssist={(assist) => onSave({ ...save, assist })}
               onGhost={(ghost) => onSave({ ...save, ghost })}
+              onHaptics={(haptics) => onSave({ ...save, haptics })}
+              onStorybook={() => setStory(true)}
+              pagesFound={pagesFound(save, RELEASE_IDS)}
               onReset={() => {
                 resetSave();
                 setSave(emptySave());

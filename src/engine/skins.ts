@@ -1,3 +1,4 @@
+import { pagesFound } from './save';
 import type { SaveData } from '../types';
 
 /**
@@ -12,6 +13,8 @@ export type Unlock =
   | { type: 'clears'; count: number }
   /** Reach this many total deaths. */
   | { type: 'deaths'; count: number }
+  /** Find this many storybook pages in release levels. */
+  | { type: 'pages'; count: number }
   /** Watch a rewarded ad (stubbed until ads are added in a dev build). */
   | { type: 'ad' };
 
@@ -64,6 +67,7 @@ export const PLAYER_SKINS: PlayerSkin[] = [
   { id: 'hood', name: 'Red Hood', color: '#e4573f', spentColor: '#8a5a52', trail: '#ff7a5c', shape: 'block', art: 'hood', unlock: { type: 'free' } },
   { id: 'gold', name: 'Gold', color: '#ffd23f', spentColor: '#7a6a3a', trail: '#ffe58a', shape: 'round', unlock: { type: 'clears', count: 5 } },
   { id: 'ghost', name: 'Ghost', color: '#e8ecff', spentColor: SPENT, shape: 'hollow', unlock: { type: 'deaths', count: 250 } },
+  { id: 'storybook', name: 'Storybook', color: '#f2e2b8', spentColor: '#8a7f66', trail: '#ffd9a0', shape: 'round', unlock: { type: 'pages', count: 15 } },
   { id: 'prism', name: 'Prism', color: '#ff7ad9', spentColor: '#6a4a7a', trail: '#8ab4ff', shape: 'block', unlock: { type: 'ad' } },
   { id: 'knight', name: 'Pixel Knight', color: '#4d9dff', spentColor: SPENT, shape: 'block', art: 'pixel', unlock: { type: 'ad' } },
 ];
@@ -162,6 +166,10 @@ export function unlockStatus(kind: SkinKind, id: string, save: SaveData, release
         unlocked: save.totalDeaths >= u.count,
         label: `Die ${u.count} times · ${Math.min(save.totalDeaths, u.count)}/${u.count}`,
       };
+    case 'pages': {
+      const n = pagesFound(save, releaseIds);
+      return { unlocked: n >= u.count, label: `Find ${u.count} page${u.count === 1 ? '' : 's'} · ${Math.min(n, u.count)}/${u.count}` };
+    }
     case 'ad':
       return { unlocked: !!save.skins?.unlocked?.includes(skinKey(kind, id)), label: 'Watch an ad' };
   }

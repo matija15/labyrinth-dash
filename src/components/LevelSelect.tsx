@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 import { chapters } from '../engine/chapters';
-import { ASSIST_OFF, ASSIST_SPEEDS, formatTime } from '../engine/save';
+import { ASSIST_OFF, ASSIST_SPEEDS, formatTime, pageCount } from '../engine/save';
 import { validateLevel } from '../engine/world';
 import type { LevelPack } from '../levels';
 import type { AssistSettings, ControlScheme, LevelDef, SaveData } from '../types';
@@ -17,6 +17,10 @@ interface Props {
   onAudio: (audio: { sfx: boolean; music: boolean }) => void;
   onAssist: (assist: AssistSettings) => void;
   onGhost: (ghost: boolean) => void;
+  onHaptics: (haptics: boolean) => void;
+  onStorybook: () => void;
+  /** Storybook pages found in the release pack. */
+  pagesFound: number;
   onEditor: () => void;
   onSkins: () => void;
   /** Dev builds only: editor button, demo-pack toggle, every level unlocked. */
@@ -25,13 +29,15 @@ interface Props {
   onPack: (pack: LevelPack) => void;
 }
 
-export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onAssist, onGhost, onEditor, onSkins, devTools, pack, onPack }: Props) {
+export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio, onAssist, onGhost, onHaptics, onStorybook, pagesFound, onEditor, onSkins, devTools, pack, onPack }: Props) {
   const insets = useSafeAreaInsets();
   const controls = save.controls ?? 'auto';
   const sfx = save.audio?.sfx ?? true;
   const music = save.audio?.music ?? true;
   const assist = save.assist ?? ASSIST_OFF;
   const ghostOn = save.ghost ?? true;
+  const hapticsOn = save.haptics ?? true;
+  const pages = useMemo(() => levels.map(pageCount), [levels]);
   const chs = useMemo(() => chapters(levels), [levels]);
   const [chapterIdx, setChapterIdx] = useState(0);
   const ch = chs[Math.min(chapterIdx, chs.length - 1)];
@@ -45,7 +51,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>LABYRINTH DASH</Text>
-          <Text style={styles.tag}>a cursed fairy-tale labyrinth · {save.totalDeaths} total deaths</Text>
+          <Text style={styles.tag}>a cursed fairy-tale labyrinth · {save.totalDeaths} total deaths · {pagesFound} pages</Text>
         </View>
         <View style={styles.headerRight}>
           <Pressable
@@ -55,6 +61,14 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
             style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
           >
             <Text style={styles.controlsText}>SKINS</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Storybook"
+            onPress={onStorybook}
+            style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.controlsText}>STORYBOOK</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -88,6 +102,14 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
               style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
             >
               <Text style={styles.controlsText}>GHOST · {ghostOn ? 'ON' : 'OFF'}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle haptics"
+              onPress={() => onHaptics(!hapticsOn)}
+              style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
+            >
+              <Text style={styles.controlsText}>HAPTICS · {hapticsOn ? 'ON' : 'OFF'}</Text>
             </Pressable>
           </View>
           <View style={styles.devRow}>
@@ -207,6 +229,11 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
                     {level.par !== undefined && (
                       <Text style={[styles.stat, rec?.bestMs != null && rec.bestMs <= level.par * 1000 && { color: COLORS.key }]}>
                         PAR {formatTime(level.par * 1000)}
+                      </Text>
+                    )}
+                    {pages[i] > 0 && (
+                      <Text style={[styles.stat, (rec?.pages?.length ?? 0) >= pages[i] && { color: COLORS.key }]}>
+                        PAGES {rec?.pages?.length ?? 0}/{pages[i]}
                       </Text>
                     )}
                     <Text style={[styles.stat, rec?.completed && { color: COLORS.orb }]}>

@@ -21,8 +21,12 @@ export const isAssisted = (a: AssistSettings | null | undefined): a is AssistSet
   !!a && (a.speed < 1 || a.infiniteDash || a.invincible);
 
 /** An assisted clear unlocks the next level but sets no best time and keeps the level marked as assisted. */
-export function recordClear(save: SaveData, levelId: string, ms: number, assisted = false, deaths?: number): { save: SaveData; newBest: boolean } {
-  const rec = save.levels[levelId] ?? emptyRecord();
+export function recordClear(
+  save: SaveData, levelId: string, ms: number, assisted = false, deaths?: number, pages: number[] = [],
+): { save: SaveData; newBest: boolean } {
+  const prev = save.levels[levelId] ?? emptyRecord();
+  const found = [...new Set([...(prev.pages ?? []), ...pages])].sort((a, b) => a - b);
+  const rec = found.length ? { ...prev, pages: found } : prev;
   if (assisted) {
     const level = { ...rec, completed: true, clears: rec.clears + 1, assisted: rec.completed ? !!rec.assisted : true };
     return { newBest: false, save: { ...save, levels: { ...save.levels, [levelId]: level } } };
@@ -42,6 +46,14 @@ export function recordClear(save: SaveData, levelId: string, ms: number, assiste
     },
   };
 }
+
+/** Storybook pages found across `levelIds` (players only count the release pack). */
+export const pagesFound = (save: SaveData, levelIds: string[]) =>
+  levelIds.reduce((n, id) => n + (save.levels[id]?.pages?.length ?? 0), 0);
+
+/** Pages placed in a level (`@` tiles). */
+export const pageCount = (level: { rooms: { tiles: string[] }[] }) =>
+  level.rooms.reduce((n, r) => n + r.tiles.reduce((m, row) => m + row.split('@').length - 1, 0), 0);
 
 export const formatTime = (ms: number) => {
   const total = Math.max(0, Math.floor(ms));

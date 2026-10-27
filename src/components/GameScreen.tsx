@@ -5,7 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
-import { PLAYER_H, PLAYER_W } from '../engine/constants';
+import { PLAYER_H, PLAYER_W, TILE } from '../engine/constants';
 import { GhostRecorder, ghostAt, type Ghost } from '../engine/ghost';
 import { loadGhost, writeGhost } from '../engine/storage';
 import { playEventSound, setAudioPrefs, setMusicPlaying, warmUpAudio } from '../engine/audio';
@@ -32,11 +32,16 @@ interface Props {
   onDeath?: (x: number, y: number) => void;
 }
 
-interface Result { ms: number; deaths: number; best: number; newBest: boolean }
+interface Result { ms: number; deaths: number; best: number; newBest: boolean; pages: number }
 
 const haptic = (e: GameEvent) => {
   if (Platform.OS === 'web') return;
   if (e.type === 'dash') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  else if (e.type === 'gravity') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  else if (e.type === 'reverse' || e.type === 'walljump') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Rigid);
+  else if (e.type === 'land') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft);
+  else if (e.type === 'page') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  else if (e.type === 'reveal' || e.type === 'plate') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   else if (e.type === 'death') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
   else if (e.type === 'goal') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   else if (e.type === 'pad' || e.type === 'unlock') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -57,6 +62,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   }, []);
   const assist = save.assist;
   const ghostOn = save.ghost ?? true;
+  const hapticsOn = save.haptics ?? true;
   const [bestGhost, setBestGhost] = useState<Ghost | null>(null);
   const ghost = ghostOn && !playtest ? bestGhost : null;
   useEffect(() => {
@@ -85,11 +91,12 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   const [result, setResult] = useState<Result | null>(null);
 
   const saveRef = useRef(save);
-  const live = useRef({ size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost });
+  const pagesFound = save.levels[level.id]?.pages;
+  const live = useRef({ size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost, hapticsOn, pagesFound });
   const pausedRef = useRef(false);
   useLayoutEffect(() => {
     saveRef.current = save;
-    live.current = { size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost };
+    live.current = { size, font, smallFont, insets, onSave, onExit, onDeath, look, art, staticPic, ghost, hapticsOn, pagesFound };
   });
 
   const togglePause = useCallback(() => {
@@ -106,26 +113,29 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
     const loop = new GameLoop(
       () => {
         if (pausedRef.current) return;
-        loop.speed = game.assist?.speed ?? 1;
+        loop.speed = (game.assist?.speed ?? 1) * (game.slowmo > 0 ? 0.35 : 1);
         game.step(touch.input);
         recorderRef.current.sample(game);
         for (const e of game.drainEvents()) {
-          haptic(e);
+          if (live.current.hapticsOn) haptic(e);
           playEventSound(e);
           if (playtest && e.type === 'death') {
-            live.current.onDeath?.(game.player.x + PLAYER_W / 2, game.player.y + PLAYER_H / 2);
+            live.current.onDeath?.(
+              game.player.x + PLAYER_W / 2 + game.world.originTx * TILE,
+              game.player.y + PLAYER_H / 2 + game.world.originTy * TILE,
+            );
             exitTimer ??= setTimeout(() => live.current.onExit(), 450);
           } else if (playtest && e.type === 'goal') {
             const ms = Math.round(game.time * 1000);
             pausedRef.current = true;
-            setResult({ ms, deaths: game.deaths, best: ms, newBest: false });
+            setResult({ ms, deaths: game.deaths, best: ms, newBest: false, pages: game.pagesFound().length });
           } else if (e.type === 'death') {
             const next = recordDeaths(saveRef.current, level.id, 1);
             saveRef.current = next;
             live.current.onSave(next);
           } else if (e.type === 'goal') {
             const ms = Math.round(game.time * 1000);
-            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms, !!game.assist, game.deaths);
+            const { save: next, newBest } = recordClear(saveRef.current, level.id, ms, !!game.assist, game.deaths, game.pagesFound());
             if (newBest) {
               const g = recorderRef.current.finish(ms);
               void writeGhost(level.id, g);
@@ -134,12 +144,12 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
             saveRef.current = next;
             live.current.onSave(next);
             pausedRef.current = true;
-            setResult({ ms, deaths: game.deaths, best: next.levels[level.id].bestMs ?? ms, newBest });
+            setResult({ ms, deaths: game.deaths, best: next.levels[level.id].bestMs ?? ms, newBest, pages: game.pagesFound().length });
           }
         }
       },
       () => {
-        const { size: s, font: f, smallFont: sf, insets: ins, look: lk, art: images, staticPic: pic, ghost: gh } = live.current;
+        const { size: s, font: f, smallFont: sf, insets: ins, look: lk, art: images, staticPic: pic, ghost: gh, pagesFound: pf } = live.current;
         if (!s.width) return;
         if (s.width !== lastW || s.height !== lastH) {
           scale = game.setViewport(s.width, s.height);
@@ -151,7 +161,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
           renderFrame({
           ghost: gh ? ghostAt(gh, game.time) : null,
             game, staticPic: pic, width: s.width, height: s.height, scale, font: f, smallFont: sf, touch,
-            insets: { left: ins.left, right: ins.right, top: ins.top }, now: performance.now(), look: lk, art: images,
+            insets: { left: ins.left, right: ins.right, top: ins.top }, now: performance.now(), look: lk, art: images, pagesFound: pf,
           }),
         );
       },
@@ -220,6 +230,12 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
                 level.par !== undefined && `PAR ${formatTime(level.par * 1000)}${result.ms <= level.par * 1000 ? ' · BEATEN' : ''}`,
                 result.deaths === 0 && !game.assist && 'DEATHLESS CROWN',
               ].filter(Boolean).join(' · ')}
+            </Text>
+          )}
+          {game.world.pages.length > 0 && (
+            <Text style={[styles.sub, { color: '#f2e2b8' }]}>
+              STORYBOOK PAGES {result.pages}/{game.world.pages.length}
+              {!playtest && ` · ${save.levels[level.id]?.pages?.length ?? 0} found in total`}
             </Text>
           )}
           {hasNext && <Button label="Next level" onPress={onNext} primary />}

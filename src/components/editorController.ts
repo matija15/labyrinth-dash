@@ -59,6 +59,8 @@ export class EditorController {
   private height = 0;
   private scale = 1;
   private listener: ((s: EditorSnapshot) => void) | null = null;
+  /** One-shot tile pick (playtest from a tile): the next press calls it instead of editing. */
+  private onPick: ((tx: number, ty: number) => void) | null = null;
 
   subscribe(fn: (s: EditorSnapshot) => void) {
     this.listener = fn;
@@ -228,12 +230,36 @@ export class EditorController {
     this.emit();
   }
 
+  pickTile(fn: (tx: number, ty: number) => void) {
+    this.onPick = fn;
+  }
+
+  /** Scrolls so tile (tx, ty) is in the middle of the canvas right of `leftInset` px, and highlights it. */
+  centerOn(tx: number, ty: number, leftInset = 0) {
+    const vw = (this.width - leftInset) / this.scale;
+    const vh = this.height / this.scale;
+    this.cam = { x: (tx + 0.5) * TILE - leftInset / this.scale - vw / 2, y: (ty + 0.5) * TILE - vh / 2 };
+    this.cursor = [tx, ty];
+    this.emit();
+  }
+
+  tileAtScreen(sx: number, sy: number): [number, number] {
+    return this.tileAt(sx, sy);
+  }
+
   private tileAt(sx: number, sy: number): [number, number] {
     return [Math.floor((sx / this.scale + this.cam.x) / TILE), Math.floor((sy / this.scale + this.cam.y) / TILE)];
   }
 
   down(id: number, x: number, y: number) {
     if (this.middlePan) return;
+    if (this.onPick && this.pointers.size === 0) {
+      const pick = this.onPick;
+      this.onPick = null;
+      const [tx, ty] = this.tileAt(x, y);
+      pick(tx, ty);
+      return;
+    }
     this.pointers.set(id, { x, y });
     if (this.pointers.size >= 2) {
       // A second finger turns any stroke into a two-finger pan and cancels its edits.

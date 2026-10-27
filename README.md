@@ -137,13 +137,19 @@ hitboxes and physics are identical in every skin.
 - Fake wall [H] `%`: looks like a wall but you can run through it; found walls stay revealed.
 - Echo plate [U] `P` and echo door [G] `E`: every death in a room with plates leaves an echo that replays your last try. Only the echo presses plates; a pressed plate opens that room's echo doors for 1.5 s.
 - Gravity gate [Z] `F` and reverse gate [Q] `R`: crossing a gravity gate flips gravity (you fall up and stand on ceilings, jumps go down); a reverse gate turns your run around. Checkpoints remember gravity.
+- Storybook page [/] `@`: an optional collectible. Hide pages off the main route (behind fake walls, on the dangerous road). A page you pick up is dropped again if you die before leaving its room; pages count once the level is cleared. Found pages open passages in the **STORYBOOK** (text in `src/story/pages.ts`) and unlock the Storybook skin (15 pages). Only release-pack pages count.
 - Lantern [Y] `*`: refills two dashes, relights after 3.5 s.
 - Wind [I] `(` `)` `u` `n`: pushes left / right, updraft, downdraft. Press I again to cycle the direction.
 - `src/levels/dev/contraptions.ts` is a demo of all of them.
 
 **Sound and music:** placeholder sounds are in `assets/audio/` (made by `python3 tools/make_sounds.py`). Replace any `.wav` with your own file of the same name. SOUND / MUSIC switches are on the level select.
 
-**Editor:** Redo (Ctrl+Y / Ctrl+Shift+Z), **Stamp** saves the current selection and **Stamps** lets you reuse, rename or delete them. Your deaths in playtests show as red X marks on the grid until you clear them.
+**Editor:** Redo (Ctrl+Y / Ctrl+Shift+Z), **Stamp** saves the current selection and **Stamps** lets you reuse, rename or delete them.
+- **Deaths / heatmap:** playtest deaths are saved per level (they survive reloads). The **✕ N deaths** button switches between X marks and a heatmap (yellow → red = where you die most); **Clear ✕** wipes them for this level.
+- **Check:** the level checker lists errors (no flag, missing spawns, flag walled off) and warnings (doors without keys, extra keys, echo doors without a plate in the room, open edges leading out of the level, keys or pages walled off). Tap an issue to jump to it.
+- **▶ Tile:** tap ▶ Tile, then a tile: the playtest starts there and you respawn there. On web, **Shift+T** starts at the tile under the mouse.
+
+**Game feel:** gravity gates and pages slow time for a moment; phones vibrate for dashes, gates, wall jumps, landings, pages, secrets and deaths (HAPTICS · ON/OFF on the level select).
 
 **Assist mode:** ASSIST SPEED (100 / 80 / 60 %), ∞ DASH and INVINCIBLE on the level select. Assisted clears still unlock the next level but set no best time, don't save a ghost, are marked "ASSIST" and don't count for skin unlocks.
 

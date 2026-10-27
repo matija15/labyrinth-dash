@@ -8,7 +8,7 @@ export const ROOM_H = VIEW_TILES_H;
 
 export type EditorTool =
   | '#' | '^' | '=' | 'O' | 'K' | 'D' | 'J' | 'S' | 'G'
-  | '-' | '[' | ']' | '*' | '(' | ')' | 'u' | 'n' | '%' | 'P' | 'E' | 'F' | 'R'
+  | '-' | '[' | ']' | '*' | '(' | ')' | 'u' | 'n' | '%' | 'P' | 'E' | 'F' | 'R' | '@'
   | 'saw' | 'platform' | 'erase' | 'room+' | 'room-' | 'pan' | 'select' | 'paste';
 
 export interface TileRect { x: number; y: number; w: number; h: number }
@@ -401,6 +401,21 @@ export function startingFrom(level: LevelDef, roomIndex: number): LevelDef {
   return copy;
 }
 
+/**
+ * Playtest from a tile: the level with that tile's room first and a spawn on the tile (the room's other spawns
+ * are removed, so deaths respawn there too). Null if the tile is outside every room or not empty.
+ */
+export function startingAt(level: LevelDef, tx: number, ty: number): LevelDef | null {
+  const i = roomIndexAt(level, tx, ty);
+  if (i < 0) return null;
+  const copy = startingFrom(level, i);
+  const room = copy.rooms[0];
+  if (!isEmpty(room.tiles[ty - room.y][tx - room.x]) && room.tiles[ty - room.y][tx - room.x] !== 'S') return null;
+  room.tiles = room.tiles.map((row) => row.replace(/S/g, '.'));
+  setChar(room, tx - room.x, ty - room.y, 'S');
+  return copy;
+}
+
 const FLOOR = new Set(['#', '=', 'D']);
 const isEmpty = (ch: string | undefined) => ch === '.' || ch === ' ';
 
@@ -447,7 +462,7 @@ export const roomIssues = (practice: LevelDef): string[] =>
 export const TOOL_SHORTCUTS: Partial<Record<EditorTool, [string, string?]>> = {
   '#': ['W', '1'], '^': ['X', '2'], saw: ['A', '3'], O: ['O', '4'], K: ['K', '5'], D: ['D', '6'], S: ['S', '7'],
   G: ['F', '8'], '=': ['C', '9'], J: ['J', '0'], erase: ['E'], select: ['V'], paste: ['P'], 'room+': ['R'],
-  '-': ['L'], '[': ['B'], ']': ['N'], '*': ['Y'], platform: ['M'], ')': ['I'], '%': ['H'], P: ['U'], E: ['G'], F: ['Z'], R: ['Q'],
+  '-': ['L'], '[': ['B'], ']': ['N'], '*': ['Y'], platform: ['M'], ')': ['I'], '%': ['H'], P: ['U'], E: ['G'], F: ['Z'], R: ['Q'], '@': ['/'],
 };
 
 /** The tool a bare key press selects (case-insensitive), if any. */
@@ -488,7 +503,7 @@ export function levelToCode(level: LevelDef): string {
     '',
     '// Legend: # solid  ^v<> spikes  = crumble  K key  D door  O dash orb  J jump pad',
     '//         1-9 portal pair  S spawn/checkpoint  G goal  . empty  - one-way  [ ] switch blocks',
-    '//         * lantern (2 dashes)  ( ) u n wind left / right / up / down  % fake wall  P echo plate  E echo door  F gravity gate  R reverse gate',
+    '//         * lantern (2 dashes)  ( ) u n wind left / right / up / down  % fake wall  P echo plate  E echo door  F gravity gate  R reverse gate  @ storybook page',
     `export const ${varNameFor(level.id)}: LevelDef = {`,
     `  id: ${JSON.stringify(level.id)},`,
     `  name: ${JSON.stringify(level.name)},`,

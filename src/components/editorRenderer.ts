@@ -31,6 +31,8 @@ const makePaints = () => ({
   door: mk(COLORS.door, { alpha: 0.85 }),
   doorLine: mk('#6b5410', { stroke: 0.6 }),
   key: mk(COLORS.key),
+  page: mk('#f2e2b8'),
+  pageInk: mk('#8a6a4a', { stroke: 0.5 }),
   orb: mk(COLORS.orb),
   orbGlow: mk(COLORS.orb, { blur: 3, alpha: 0.5 }),
   pad: mk(COLORS.pad),
@@ -45,6 +47,7 @@ const makePaints = () => ({
   wind: mk(MECH.wind, { stroke: 0.7, alpha: 0.8 }),
   plat: mk('#8fa6ff'),
   death: mk('#ff3b5c', { stroke: 0.9, alpha: 0.85 }),
+  heat: mk('#ff2a4a'),
   platGhost: mk('#8fa6ff', { alpha: 0.3 }),
   platPath: mk('#8fa6ff', { stroke: 0.6, alpha: 0.7 }),
   goalGlow: mk(COLORS.goal, { blur: 4, alpha: 0.7 }),
@@ -145,6 +148,10 @@ export function buildEditorPicture(level: LevelDef): SkPicture {
           c.rotate(45, 0, 0);
           c.drawRect(Skia.XYWHRect(-2, -2, 4, 4), P.key);
           c.restore();
+        } else if (ch === '@') {
+          c.drawRect(Skia.XYWHRect(cx - 2.5, cy - 3.5, 5, 7), P.page);
+          c.drawLine(cx - 1.5, cy - 1, cx + 1.5, cy - 1, P.pageInk);
+          c.drawLine(cx - 1.5, cy + 1, cx + 1.5, cy + 1, P.pageInk);
         } else if (ch === 'O') {
           c.drawCircle(cx, cy, 4, P.orbGlow);
           c.drawCircle(cx, cy, 2.6, P.orb);
@@ -230,6 +237,8 @@ export interface EditorFrame {
   platformDrag?: boolean;
   /** Playtest deaths (world px). */
   deathMarks?: [number, number][];
+  /** Draw deaths as a per-tile heatmap instead of ✕ marks. */
+  heat?: boolean;
   selection?: TileRect | null;
   pastePreview?: TileRect | null;
 }
@@ -274,10 +283,25 @@ export function renderEditorFrame(f: EditorFrame): SkPicture {
     c.drawRect(rect(f.pastePreview), P.pasteFill);
     c.drawRect(rect(f.pastePreview), P.paste);
   }
-  for (const [x, y] of f.deathMarks ?? []) {
-    c.drawLine(x - 2, y - 2, x + 2, y + 2, P.death);
-    c.drawLine(x - 2, y + 2, x + 2, y - 2, P.death);
-  }
+  if (f.heat && f.deathMarks?.length) {
+    const counts = new Map<string, number>();
+    for (const [x, y] of f.deathMarks) {
+      const k = `${Math.floor(x / TILE)},${Math.floor(y / TILE)}`;
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    const max = Math.max(...counts.values());
+    counts.forEach((n, k) => {
+      const [tx, ty] = k.split(',').map(Number);
+      const v = n / max;
+      P.heat.setColor(Skia.Color(v > 0.66 ? '#ff2a4a' : v > 0.33 ? '#ff8a2a' : '#ffd23f'));
+      P.heat.setAlphaf(0.35 + 0.5 * v);
+      c.drawRect(Skia.XYWHRect(tx * TILE, ty * TILE, TILE, TILE), P.heat);
+    });
+  } else
+    for (const [x, y] of f.deathMarks ?? []) {
+      c.drawLine(x - 2, y - 2, x + 2, y + 2, P.death);
+      c.drawLine(x - 2, y + 2, x + 2, y - 2, P.death);
+    }
   if (f.cursor) c.drawRect(Skia.XYWHRect(f.cursor[0] * TILE, f.cursor[1] * TILE, TILE, TILE), P.cursor);
   c.restore();
   if (f.font)

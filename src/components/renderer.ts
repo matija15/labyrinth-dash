@@ -66,6 +66,9 @@ function makePaints({ theme: T, player: PL }: Look) {
     doorGlow: paint(COLORS.door, { blur: 3, alpha: 0.35 }),
     key: paint(COLORS.key),
     keyGlow: paint(COLORS.key, { blur: 4, alpha: 0.6 }),
+    page: paint('#f2e2b8'),
+    pageGlow: paint('#ffd9a0', { blur: 4, alpha: 0.55 }),
+    pageInk: paint('#8a6a4a', { stroke: 0.5 }),
     orb: paint(COLORS.orb),
     orbGlow: paint(COLORS.orb, { blur: 5, alpha: 0.6 }),
     orbSpent: paint(COLORS.orb, { stroke: 0.6, alpha: 0.35 }),
@@ -245,6 +248,8 @@ export interface FrameContext {
   art: ArtImages;
   /** Best-run ghost position (world px), if one is shown. */
   ghost?: { x: number; y: number } | null;
+  /** Pages found in earlier clears (drawn faded until picked up again). */
+  pagesFound?: number[];
 }
 
 const hexWithAlpha = (hex: string, a: number) => {
@@ -326,6 +331,22 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
       c.drawRect(Skia.XYWHRect(-2.5, -2.5, 5, 5), P.keyGlow);
       c.drawRect(Skia.XYWHRect(-2, -2, 4, 4), P.key);
     }
+    c.restore();
+  });
+
+  // Storybook pages
+  world.pages.forEach((pg, i) => {
+    if (game.pagesTaken[i]) return;
+    const bob = Math.sin(t * 2.4 + i * 1.7) * 1.4;
+    const seen = f.pagesFound?.includes(i);
+    c.save();
+    c.translate(pg.x, pg.y + bob);
+    c.rotate(Math.sin(t * 1.6 + i) * 8, 0, 0);
+    P.page.setAlphaf(seen ? 0.35 : 1);
+    P.pageGlow.setAlphaf(seen ? 0.15 : 0.55);
+    c.drawRect(Skia.XYWHRect(-3.5, -4.5, 7, 9), P.pageGlow);
+    c.drawRect(Skia.XYWHRect(-2.5, -3.5, 5, 7), P.page);
+    for (const ly of [-1.8, 0, 1.8]) c.drawLine(-1.5, ly, 1.5, ly, P.pageInk);
     c.restore();
   });
 
@@ -628,6 +649,10 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   if (game.heldKeys > 0) {
     P.key.setColor(Skia.Color(f.look.theme.key));
     text(c, `KEY x${game.heldKeys}`, x0 + 110, y0 + 20, smallFont, P.key, P.hudShadow);
+  }
+  if (game.world.pages.length) {
+    const got = game.pagesTaken.filter(Boolean).length;
+    text(c, `PAGES ${got}/${game.world.pages.length}`, x0 + (game.heldKeys > 0 ? 180 : 110), y0 + 20, smallFont, P.hudText, P.hudShadow);
   }
   const roomLabel = `${game.level.name.toUpperCase()}  ${game.world.rooms.indexOf(game.room) + 1}/${game.world.rooms.length}`;
   const lw = textWidth(smallFont, roomLabel);
