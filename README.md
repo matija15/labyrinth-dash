@@ -135,6 +135,7 @@ hitboxes and physics are identical in every skin.
 - Moving platform [M]: drag to set its path (tap = 6 tiles to the right). It carries you and can crush you.
 - Switch blocks [B] `[` / [N] `]`: each dash swaps which colour is solid.
 - Fake wall [H] `%`: looks like a wall but you can run through it; found walls stay revealed.
+- Echo plate [U] `P` and echo door [G] `E`: every death in a room with plates leaves an echo that replays your last try. Only the echo presses plates; a pressed plate opens that room's echo doors for 1.5 s.
 - Lantern [Y] `*`: refills two dashes, relights after 3.5 s.
 - Wind [I] `(` `)` `u` `n`: pushes left / right, updraft, downdraft. Press I again to cycle the direction.
 - `src/levels/dev/contraptions.ts` is a demo of all of them.

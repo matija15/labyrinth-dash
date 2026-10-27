@@ -25,13 +25,16 @@ export enum T {
   WindD = 16,
   /** Looks like a wall but is passable; found walls stay revealed. */
   FakeWall = 17,
+  /** Pressed by your echo (never by you); opens the room's echo doors. */
+  EchoPlate = 18,
+  EchoDoor = 19,
 }
 
 export const WIND_DIR: Partial<Record<T, Vec2>> = {
   [T.WindL]: { x: -1, y: 0 }, [T.WindR]: { x: 1, y: 0 }, [T.WindU]: { x: 0, y: -1 }, [T.WindD]: { x: 0, y: 1 },
 };
 const TILE_OF: Record<string, T> = {
-  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD, '%': T.FakeWall,
+  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD, '%': T.FakeWall, P: T.EchoPlate, E: T.EchoDoor,
 };
 
 export interface Room {
@@ -40,6 +43,8 @@ export interface Room {
   /** Bounds in world px. */
   rect: Rect;
   spawns: Vec2[];
+  /** Has echo plates: attempts here are recorded and replayed as echoes. */
+  echo: boolean;
   saws: SawDef[];
   platforms: PlatformDef[];
   /** Room origin in world tiles (saw coordinates are room-relative). */
@@ -70,6 +75,7 @@ export interface World {
   /** Fake-wall group per tile (-1 if none); connected fake walls are found together. */
   fakeOf: Int16Array;
   fakes: number[][];
+  plates: { tx: number; ty: number; room: number }[];
   rooms: Room[];
   keys: KeyItem[];
   doors: DoorGroup[];
@@ -149,7 +155,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
   const roomOf = new Int16Array(w * h).fill(-1);
   const fakeOf = new Int16Array(w * h).fill(-1);
   const world: World = {
-    w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf, roomOf, fakeOf, fakes: [],
+    w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf, roomOf, fakeOf, fakes: [], plates: [],
     rooms: [], keys: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [], crystals: [], switches: [], winds: [],
     goal: null, start: { x: 0, y: 0 },
   };
@@ -163,7 +169,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
     const room: Room = {
       index, id: def.id,
       rect: { x: rx * TILE, y: ry * TILE, w: def.tiles[0].length * TILE, h: def.tiles.length * TILE },
-      spawns: [], saws: def.saws ?? [], platforms: def.platforms ?? [], tx: rx, ty: ry,
+      spawns: [], echo: false, saws: def.saws ?? [], platforms: def.platforms ?? [], tx: rx, ty: ry,
     };
     def.tiles.forEach((row, y) => {
       for (let x = 0; x < row.length; x++) {
@@ -205,6 +211,10 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
         grid[i] = tile;
         roomOf[i] = index;
         if (tile === T.FakeWall) fakeTiles.push(i);
+        if (tile === T.EchoPlate) {
+          world.plates.push({ tx, ty, room: index });
+          room.echo = true;
+        }
       }
     });
     world.rooms.push(room);

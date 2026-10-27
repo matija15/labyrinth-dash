@@ -90,6 +90,13 @@ export class Game {
   crystalCooldown: number[];
   /** Fake-wall groups the player has found (kept across deaths). */
   fakeRevealed: boolean[];
+  /** Replay of the last attempt in this room (x, y, facing per step), shown in rooms with echo plates. */
+  echo: { frames: number[]; i: number } | null = null;
+  /** Per room: seconds its echo doors stay open. */
+  echoOpen: number[];
+  private attempt: number[] = [];
+  /** Echo-door tiles that closed around the player; passable until the player leaves them. */
+  private echoLatch: number[] = [];
   /** Switch blocks: false → `[` blocks are solid, true → `]` blocks. Swaps on every dash. */
   switchFlipped = false;
   /** Current room's moving platforms (world px), updated every step. */
@@ -132,6 +139,7 @@ export class Game {
     this.padFlash = this.world.pads.map(() => 0);
     this.crystalCooldown = this.world.crystals.map(() => 0);
     this.fakeRevealed = this.world.fakes.map(() => false);
+    this.echoOpen = this.world.rooms.map(() => 0);
     this.plats = this.platRects(this.room);
     this.player = this.freshPlayer(this.checkpoint);
     this.snapshot = this.takeSnapshot();
@@ -204,6 +212,7 @@ export class Game {
     this.readInput(input);
     this.movePlatforms();
     if (this.phase !== 'playing') return;
+    this.updateEcho(dt);
     this.updatePlayer(input, dt);
     this.updateWorldObjects(dt);
     if (this.phase === 'playing') this.interact();
@@ -491,6 +500,7 @@ export class Game {
     const i = ty * this.world.w + tx;
     if (t === T.Crumble) return this.crumbleState[this.world.crumbleOf[i]] !== 2;
     if (t === T.Door) return !this.doorsOpen[this.world.doorOf[i]];
+    if (t === T.EchoDoor) return !(this.echoOpen[this.world.roomOf[i]] > 0) && !this.echoLatch.includes(i);
     if (t === T.SwitchA || t === T.SwitchB) return (t === T.SwitchB) === this.switchFlipped && !this.switchGhost.includes(i);
     return false;
   }
@@ -839,6 +849,37 @@ export class Game {
     }
   }
 
+  /** Where the echo is this step, or null when there is none (or its replay has ended). */
+  echoPos(): { x: number; y: number; facing: number } | null {
+    const e = this.echo;
+    if (!e || e.i === 0 || e.i * 3 > e.frames.length) return null;
+    const k = (e.i - 1) * 3;
+    return { x: e.frames[k], y: e.frames[k + 1], facing: e.frames[k + 2] };
+  }
+
+  private updateEcho(dt: number) {
+    if (!this.room.echo) return;
+    const p = this.player;
+    if (this.attempt.length < C.ECHO_MAX_FRAMES * 3) this.attempt.push(p.x, p.y, p.facing);
+    for (let r = 0; r < this.echoOpen.length; r++) if (this.echoOpen[r] > 0) this.echoOpen[r] -= dt;
+    const e = this.echo;
+    if (e && e.i * 3 < e.frames.length) {
+      const box = { x: e.frames[e.i * 3], y: e.frames[e.i * 3 + 1], w: C.PLAYER_W, h: C.PLAYER_H };
+      e.i++;
+      for (const pl of this.world.plates) {
+        if (pl.room !== this.room.index || !overlaps({ x: pl.tx * C.TILE, y: pl.ty * C.TILE, w: C.TILE, h: C.TILE }, box)) continue;
+        if (!(this.echoOpen[pl.room] > 0)) this.events.push({ type: 'unlock' });
+        this.echoOpen[pl.room] = C.ECHO_HOLD;
+      }
+    } else if (e) e.i = e.frames.length / 3 + 1;
+    const open = this.echoOpen[this.room.index] > 0;
+    const under: number[] = [];
+    for (let ty = Math.floor(p.y / C.TILE); ty <= Math.floor((p.y + C.PLAYER_H - 0.001) / C.TILE); ty++)
+      for (let tx = Math.floor(p.x / C.TILE); tx <= Math.floor((p.x + C.PLAYER_W - 0.001) / C.TILE); tx++)
+        if (tileAt(this.world, tx, ty) === T.EchoDoor) under.push(ty * this.world.w + tx);
+    this.echoLatch = under.filter((i) => open || this.echoLatch.includes(i));
+  }
+
   private revealFake(group: number) {
     this.fakeRevealed[group] = true;
     this.events.push({ type: 'unlock' });
@@ -873,6 +914,8 @@ export class Game {
     this.deaths++;
     this.shake = 4.5;
     this.events.push({ type: 'death' });
+    if (this.room.echo && this.attempt.length) this.echo = { frames: this.attempt, i: 0 };
+    this.attempt = [];
     const cx = p.x + C.PLAYER_W / 2;
     const cy = p.y + C.PLAYER_H / 2;
     for (let i = 0; i < 28; i++) {
@@ -898,6 +941,8 @@ export class Game {
     this.orbCooldown.fill(0);
     this.crystalCooldown.fill(0);
     this.switchGhost = [];
+    this.resetEchoRun();
+    if (this.echo) this.echo.i = 0;
     this.snapCamera();
     this.events.push({ type: 'respawn' });
     this.burst(this.checkpoint.x + 3, this.checkpoint.y + 3, 10, PLAYER_COLOR, 40, 0, Math.PI * 2, -1);
@@ -911,6 +956,8 @@ export class Game {
     this.keysTaken.fill(false);
     this.doorsOpen.fill(false);
     this.fakeRevealed.fill(false);
+    this.echo = null;
+    this.resetEchoRun();
     this.switchFlipped = false;
     this.switchGhost = [];
     this.snapshot = this.takeSnapshot();
@@ -926,6 +973,12 @@ export class Game {
     this.particles = [];
     this.ghosts = [];
     this.snapCamera();
+  }
+
+  private resetEchoRun() {
+    this.attempt = [];
+    this.echoOpen.fill(0);
+    this.echoLatch = [];
   }
 
   private takeSnapshot(): Snapshot {
@@ -962,6 +1015,8 @@ export class Game {
 
     this.room = next;
     this.plats = this.platRects(next);
+    this.echo = null;
+    this.resetEchoRun();
     let best = next.spawns[0];
     let bestD = Infinity;
     for (const s of next.spawns) {

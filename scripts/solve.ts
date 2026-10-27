@@ -157,7 +157,10 @@ function solve(levelId: string, maxNodes = 8_000_000) {
 }
 
 const arg = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const ids = arg ? [arg] : LEVELS.map((l) => l.id);
+/** Echo puzzles need a deliberate death, which this search never plans; tests/echo.test.ts plays them instead. */
+const needsEcho = (l: (typeof LEVELS)[number]) => l.rooms.some((r) => r.tiles.some((row) => row.includes('P')));
+for (const l of arg ? [] : LEVELS.filter(needsEcho)) console.log(`skipping ${l.id}: echo puzzle (scripted in tests/echo.test.ts)`);
+const ids = arg ? [arg] : LEVELS.filter((l) => !needsEcho(l)).map((l) => l.id);
 console.log(`scheme: ${MANUAL ? 'manual run pads' : 'auto-run'}`);
 let failed = false;
 for (const id of ids) {

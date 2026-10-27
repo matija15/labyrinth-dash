@@ -9,7 +9,7 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `O` dash orb     `J` jump pad     `1`-`9` portal pair  `S` spawn/checkpoint
  *  `G` goal         `.` or space: empty
  *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
- *  `%` fake wall (looks solid, is passable)
+ *  `%` fake wall (looks solid, is passable)   `P` echo plate   `E` echo door (open while your echo holds a plate)
  *  `*` lantern (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =

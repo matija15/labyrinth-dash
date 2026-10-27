@@ -101,6 +101,9 @@ function makePaints({ theme: T, player: PL }: Look) {
     })(),
     artGhost: paint('#ffffff'),
     ghost: paint(COLORS.player),
+    echo: paint(MECH.echo, { alpha: 0.55 }),
+    echoGlow: paint(MECH.echo, { blur: 3, alpha: 0.6 }),
+    echoLine: paint(MECH.echo, { stroke: 0.6, alpha: 0.6 }),
     particle: paint('#ffffff'),
     light: paint('#ffffff', { blend: BlendMode.Plus }),
     flash: paint('#ffffff'),
@@ -117,7 +120,7 @@ function makePaints({ theme: T, player: PL }: Look) {
 
 const UI = { text: '#e8ecff', dim: '#7c86b0' };
 /** Colours of the newer mechanics (shared by every theme, like hazards they stay readable everywhere). */
-export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff' };
+export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff', echo: '#b18cff' };
 
 const getPaints = (look: Look) => {
   const key = `${look.theme.id}/${look.player.id}`;
@@ -376,6 +379,30 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
       c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), b ? P.switchB : P.switchA);
       c.drawRect(Skia.XYWHRect(x + 1.5, y + 1.5, TILE - 3, TILE - 3), P.switchLine);
     } else c.drawRect(Skia.XYWHRect(x + 0.8, y + 0.8, TILE - 1.6, TILE - 1.6), b ? P.switchBOff : P.switchAOff);
+  }
+
+  // Echo plates (lit while held open) and echo doors (violet bars, outline when open)
+  for (const pl of world.plates) {
+    const lit = game.echoOpen[pl.room] > 0;
+    const r = Skia.XYWHRect(pl.tx * TILE + 1, pl.ty * TILE + TILE - (lit ? 1.5 : 2.5), TILE - 2, lit ? 1.5 : 2.5);
+    if (lit) c.drawRect(r, P.echoGlow);
+    c.drawRect(r, P.echo);
+  }
+  for (let i = 0; i < world.grid.length; i++) {
+    if (world.grid[i] !== T.EchoDoor) continue;
+    const x = (i % world.w) * TILE;
+    const y = Math.floor(i / world.w) * TILE;
+    if (game.echoOpen[world.roomOf[i]] > 0) c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.echoLine);
+    else {
+      c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.echo);
+      c.drawLine(x + 2.5, y, x + 2.5, y + TILE, P.echoLine);
+      c.drawLine(x + 5.5, y, x + 5.5, y + TILE, P.echoLine);
+    }
+  }
+  const echo = game.echoPos();
+  if (echo) {
+    c.drawRect(Skia.XYWHRect(echo.x - 0.5, echo.y - 0.5, PLAYER_W + 1, PLAYER_H + 1), P.echoGlow);
+    c.drawRect(Skia.XYWHRect(echo.x, echo.y, PLAYER_W, PLAYER_H), P.echo);
   }
 
   // Fake walls look like wall until found, then leave a faint outline

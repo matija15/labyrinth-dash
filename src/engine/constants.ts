@@ -43,6 +43,10 @@ export const CORNER_CORRECTION = 3;
 
 export const ORB_RESPAWN = 2.5;
 export const CRYSTAL_RESPAWN = 3.5;
+/** Echo doors stay open this long (s) after an echo touches a plate. */
+export const ECHO_HOLD = 1.5;
+/** Longest attempt an echo remembers (fixed steps). */
+export const ECHO_MAX_FRAMES = 120 * 60;
 /** Horizontal wind: extra drift in px/s on top of the player's own speed. */
 export const WIND_PUSH = 55;
 /** Up-draft acceleration against gravity, and the fastest it lifts you. */
