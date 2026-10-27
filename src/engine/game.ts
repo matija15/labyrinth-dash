@@ -88,6 +88,8 @@ export class Game {
   crumbleState: Uint8Array; // 0 idle, 1 shaking, 2 gone
   padFlash: number[];
   crystalCooldown: number[];
+  /** Fake-wall groups the player has found (kept across deaths). */
+  fakeRevealed: boolean[];
   /** Switch blocks: false → `[` blocks are solid, true → `]` blocks. Swaps on every dash. */
   switchFlipped = false;
   /** Current room's moving platforms (world px), updated every step. */
@@ -129,6 +131,7 @@ export class Game {
     this.crumbleState = new Uint8Array(this.world.crumbles.length);
     this.padFlash = this.world.pads.map(() => 0);
     this.crystalCooldown = this.world.crystals.map(() => 0);
+    this.fakeRevealed = this.world.fakes.map(() => false);
     this.plats = this.platRects(this.room);
     this.player = this.freshPlayer(this.checkpoint);
     this.snapshot = this.takeSnapshot();
@@ -747,6 +750,11 @@ export class Game {
           if (!this.doorsOpen[g] && this.heldKeys > 0) this.unlock(g);
           continue;
         }
+        if (t === T.FakeWall) {
+          const g = this.world.fakeOf[ty * this.world.w + tx];
+          if (!this.fakeRevealed[g] && overlaps({ x: tx * C.TILE, y: ty * C.TILE, w: C.TILE, h: C.TILE }, pr)) this.revealFake(g);
+          continue;
+        }
         const hb = spikeBox(t, tx, ty);
         if (hb && overlaps(hb, pr) && spikeLethal(t, p.vx, p.vy)) return this.hurt();
         if (t === T.Pit && overlaps({ x: tx * C.TILE, y: ty * C.TILE + 2, w: C.TILE, h: C.TILE }, pr)) return this.hurt();
@@ -831,6 +839,13 @@ export class Game {
     }
   }
 
+  private revealFake(group: number) {
+    this.fakeRevealed[group] = true;
+    this.events.push({ type: 'unlock' });
+    for (const i of this.world.fakes[group])
+      this.burst((i % this.world.w) * C.TILE + 4, Math.floor(i / this.world.w) * C.TILE + 4, 2, DUST_COLOR, 30, 0, Math.PI * 2);
+  }
+
   private unlock(group: number) {
     this.heldKeys--;
     this.doorsOpen[group] = true;
@@ -895,6 +910,7 @@ export class Game {
     this.heldKeys = 0;
     this.keysTaken.fill(false);
     this.doorsOpen.fill(false);
+    this.fakeRevealed.fill(false);
     this.switchFlipped = false;
     this.switchGhost = [];
     this.snapshot = this.takeSnapshot();

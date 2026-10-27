@@ -159,6 +159,10 @@ export function buildEditorPicture(level: LevelDef): SkPicture {
           const path = d.detach();
           c.drawPath(path, P.goalGlow);
           c.drawPath(path, P.goal);
+        } else if (ch === '%') {
+          c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.solid);
+          c.drawLine(x + 1, y + 1, x + TILE - 1, y + TILE - 1, P.edge);
+          c.drawLine(x + TILE - 1, y + 1, x + 1, y + TILE - 1, P.edge);
         } else if (ch === '-') {
           c.drawRect(Skia.XYWHRect(x, y, TILE, 2), P.oneWay);
           c.drawLine(x + 2, y + 2, x + 2, y + 4, P.oneWay);

@@ -8,7 +8,7 @@ export const ROOM_H = VIEW_TILES_H;
 
 export type EditorTool =
   | '#' | '^' | '=' | 'O' | 'K' | 'D' | 'J' | 'S' | 'G'
-  | '-' | '[' | ']' | '*' | '(' | ')' | 'u' | 'n'
+  | '-' | '[' | ']' | '*' | '(' | ')' | 'u' | 'n' | '%'
   | 'saw' | 'platform' | 'erase' | 'room+' | 'room-' | 'pan' | 'select' | 'paste';
 
 export interface TileRect { x: number; y: number; w: number; h: number }
@@ -447,7 +447,7 @@ export const roomIssues = (practice: LevelDef): string[] =>
 export const TOOL_SHORTCUTS: Partial<Record<EditorTool, [string, string?]>> = {
   '#': ['W', '1'], '^': ['X', '2'], saw: ['A', '3'], O: ['O', '4'], K: ['K', '5'], D: ['D', '6'], S: ['S', '7'],
   G: ['F', '8'], '=': ['C', '9'], J: ['J', '0'], erase: ['E'], select: ['V'], paste: ['P'], 'room+': ['R'],
-  '-': ['L'], '[': ['B'], ']': ['N'], '*': ['Y'], platform: ['M'], ')': ['I'],
+  '-': ['L'], '[': ['B'], ']': ['N'], '*': ['Y'], platform: ['M'], ')': ['I'], '%': ['H'],
 };
 
 /** The tool a bare key press selects (case-insensitive), if any. */
@@ -488,7 +488,7 @@ export function levelToCode(level: LevelDef): string {
     '',
     '// Legend: # solid  ^v<> spikes  = crumble  K key  D door  O dash orb  J jump pad',
     '//         1-9 portal pair  S spawn/checkpoint  G goal  . empty  - one-way  [ ] switch blocks',
-    '//         * lantern (2 dashes)  ( ) u n wind left / right / up / down',
+    '//         * lantern (2 dashes)  ( ) u n wind left / right / up / down  % fake wall',
     `export const ${varNameFor(level.id)}: LevelDef = {`,
     `  id: ${JSON.stringify(level.id)},`,
     `  name: ${JSON.stringify(level.name)},`,

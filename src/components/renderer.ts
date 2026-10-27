@@ -136,6 +136,8 @@ function drawArt(c: SkCanvas, img: SkImage, x: number, y: number, w: number, h: 
 }
 
 const solidish = (t: T) => t === T.Solid || t === T.Void;
+/** Fake walls count as wall for edge drawing so they blend into the real walls around them. */
+const walled = (t: T) => solidish(t) || t === T.FakeWall;
 
 /** Static geometry (walls, spikes) is recorded once per level into a reusable picture. */
 export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}): SkPicture {
@@ -161,10 +163,10 @@ export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}):
       const y = ty * TILE;
       if (solidish(t)) {
         // Only draw tiles adjacent to open space (deep void stays background)
-        const exposedU = !solidish(at(tx, ty - 1));
-        const exposedD = !solidish(at(tx, ty + 1));
-        const exposedL = !solidish(at(tx - 1, ty));
-        const exposedR = !solidish(at(tx + 1, ty));
+        const exposedU = !walled(at(tx, ty - 1));
+        const exposedD = !walled(at(tx, ty + 1));
+        const exposedL = !walled(at(tx - 1, ty));
+        const exposedR = !walled(at(tx + 1, ty));
         let near = exposedU || exposedD || exposedL || exposedR;
         if (!near)
           for (let dy = -2; dy <= 2 && !near; dy++)
@@ -375,6 +377,16 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
       c.drawRect(Skia.XYWHRect(x + 1.5, y + 1.5, TILE - 3, TILE - 3), P.switchLine);
     } else c.drawRect(Skia.XYWHRect(x + 0.8, y + 0.8, TILE - 1.6, TILE - 1.6), b ? P.switchBOff : P.switchAOff);
   }
+
+  // Fake walls look like wall until found, then leave a faint outline
+  world.fakes.forEach((tiles, g) => {
+    for (const i of tiles) {
+      const x = (i % world.w) * TILE;
+      const y = Math.floor(i / world.w) * TILE;
+      if (game.fakeRevealed[g]) c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.edge);
+      else c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.solid);
+    }
+  });
 
   // Wind streaks drift along the wind
   world.winds.forEach((w, i) => {

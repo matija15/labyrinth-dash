@@ -134,6 +134,7 @@ hitboxes and physics are identical in every skin.
 - One-way platform [L] `-`: jump up through it, land on top, dash straight down to drop through.
 - Moving platform [M]: drag to set its path (tap = 6 tiles to the right). It carries you and can crush you.
 - Switch blocks [B] `[` / [N] `]`: each dash swaps which colour is solid.
+- Fake wall [H] `%`: looks like a wall but you can run through it; found walls stay revealed.
 - Lantern [Y] `*`: refills two dashes, relights after 3.5 s.
 - Wind [I] `(` `)` `u` `n`: pushes left / right, updraft, downdraft. Press I again to cycle the direction.
 - `src/levels/dev/contraptions.ts` is a demo of all of them.

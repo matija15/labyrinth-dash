@@ -9,7 +9,8 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `O` dash orb     `J` jump pad     `1`-`9` portal pair  `S` spawn/checkpoint
  *  `G` goal         `.` or space: empty
  *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
- *  `*` crystal (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
+ *  `%` fake wall (looks solid, is passable)
+ *  `*` lantern (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =
   | '#'

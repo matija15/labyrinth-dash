@@ -42,6 +42,7 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: 'G', label: 'Exit Flag', color: COLORS.goal },
   { tool: '=', label: 'Crumble', color: COLORS.crumble },
   { tool: 'J', label: 'Jump Pad', color: COLORS.pad },
+  { tool: '%', label: 'Fake Wall', color: COLORS.solidEdge },
   { tool: '-', label: 'One-Way', color: COLORS.solidEdge },
   { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
   { tool: '[', label: 'Switch A', color: MECH.switchA },
