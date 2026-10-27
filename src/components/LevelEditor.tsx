@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
+import { THEMES } from '../engine/skins';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import { Canvas, Picture, useFont } from '@shopify/react-native-skia';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -27,6 +28,9 @@ interface Props {
   onClearDeathMarks?: () => void;
 }
 
+/** Theme choices for a level ('' = default). */
+const LEVEL_THEMES = ['', ...THEMES.map((t) => t.id)];
+
 const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: '#', label: 'Wall', color: COLORS.solidEdge },
   { tool: '^', label: 'Spikes', color: COLORS.spike },
@@ -42,7 +46,7 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
   { tool: '[', label: 'Switch A', color: MECH.switchA },
   { tool: ']', label: 'Switch B', color: MECH.switchB },
-  { tool: '*', label: 'Crystal', color: MECH.crystal },
+  { tool: '*', label: 'Lantern', color: MECH.crystal },
   { tool: ')', label: 'Wind →', color: MECH.wind },
   { tool: '(', label: 'Wind ←', color: MECH.wind },
   { tool: 'u', label: 'Wind ↑', color: MECH.wind },
@@ -410,6 +414,8 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
           onRename={(name) => ctl.rename(name)}
           onSubtitle={(sub) => ctl.setSubtitle(sub)}
           onChapter={(ch) => ctl.setChapter(ch)}
+          onPar={(t) => ctl.setPar(t)}
+          onTheme={(id) => ctl.setTheme(id)}
           onSaved={(id, position) => {
             setSourceId(id);
             ctl.setMessage(`Saved ${id}.json as level ${position}`);
@@ -564,13 +570,15 @@ function ExportModal({ level, onRename, onClose }: { level: LevelDef; onRename: 
 }
 
 function SaveModal({
-  level, sourceId, onRename, onSubtitle, onChapter, onSaved, onClose,
+  level, sourceId, onRename, onSubtitle, onChapter, onPar, onTheme, onSaved, onClose,
 }: {
   level: LevelDef;
   sourceId: string | null;
   onRename: (name: string) => void;
   onSubtitle: (subtitle: string) => void;
   onChapter: (chapter: string) => void;
+  onPar: (seconds: string) => void;
+  onTheme: (id: string) => void;
   onSaved: (id: string, position: number) => void;
   onClose: () => void;
 }) {
@@ -625,6 +633,28 @@ function SaveModal({
           placeholderTextColor={COLORS.dim}
           autoCorrect={false}
         />
+      </View>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Par (s)</Text>
+        <TextInput
+          defaultValue={level.par ? String(level.par) : ''}
+          onChangeText={onPar}
+          style={[styles.input, { flex: 1 }]}
+          placeholder="Target time in seconds · empty = no par"
+          placeholderTextColor={COLORS.dim}
+          keyboardType="decimal-pad"
+          autoCorrect={false}
+        />
+      </View>
+      <View style={styles.row}>
+        <Text style={[styles.label, styles.fieldLabel]}>Theme</Text>
+        <Pressable
+          accessibilityLabel="Level theme"
+          onPress={() => onTheme(LEVEL_THEMES[(LEVEL_THEMES.indexOf(level.theme ?? '') + 1) % LEVEL_THEMES.length])}
+          style={[styles.input, { flex: 1, justifyContent: 'center' }]}
+        >
+          <Text style={{ color: COLORS.text }}>{THEMES.find((t) => t.id === level.theme)?.name ?? 'Default (Neon Night)'}</Text>
+        </Pressable>
       </View>
       <Text style={styles.small}>
         Writes src/levels/release/{level.id}.json ({target}). Commit the files to ship them.

@@ -488,12 +488,14 @@ export function levelToCode(level: LevelDef): string {
     '',
     '// Legend: # solid  ^v<> spikes  = crumble  K key  D door  O dash orb  J jump pad',
     '//         1-9 portal pair  S spawn/checkpoint  G goal  . empty  - one-way  [ ] switch blocks',
-    '//         * crystal (2 dashes)  ( ) u n wind left / right / up / down',
+    '//         * lantern (2 dashes)  ( ) u n wind left / right / up / down',
     `export const ${varNameFor(level.id)}: LevelDef = {`,
     `  id: ${JSON.stringify(level.id)},`,
     `  name: ${JSON.stringify(level.name)},`,
     `  subtitle: ${JSON.stringify(level.subtitle)},`,
     ...(level.chapter ? [`  chapter: ${JSON.stringify(level.chapter)},`] : []),
+    ...(level.par ? [`  par: ${level.par},`] : []),
+    ...(level.theme ? [`  theme: ${JSON.stringify(level.theme)},`] : []),
     '  rooms: [',
   ];
   for (const r of level.rooms) {
@@ -595,6 +597,8 @@ export function parseLevelCode(text: string): LevelDef {
     name,
     subtitle: typeof d.subtitle === 'string' ? d.subtitle : 'Made in the editor',
     ...(typeof d.chapter === 'string' && d.chapter ? { chapter: d.chapter } : {}),
+    ...(typeof d.par === 'number' && d.par > 0 ? { par: d.par } : {}),
+    ...(typeof d.theme === 'string' && d.theme ? { theme: d.theme } : {}),
     rooms,
   };
 }

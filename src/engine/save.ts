@@ -36,6 +36,7 @@ export function recordClear(save: SaveData, levelId: string, ms: number, assiste
         ...save.levels,
         [levelId]: { ...rec, completed: true, clears: rec.clears + 1, bestMs: newBest ? ms : rec.bestMs, assisted: false,
           ...(deaths !== undefined ? { fewestDeaths: Math.min(deaths, rec.fewestDeaths ?? Infinity) } : {}),
+          ...(deaths === 0 || rec.deathless ? { deathless: true } : {}),
         },
       },
     },

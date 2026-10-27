@@ -80,6 +80,10 @@ export interface LevelDef {
   subtitle: string;
   /** Chapter name; consecutive levels with the same name are one chapter in the level select. */
   chapter?: string;
+  /** Par time in seconds, shown on level select; beating it is a bonus goal. */
+  par?: number;
+  /** World theme id used while the player keeps the "Chapter themes" setting. */
+  theme?: string;
   rooms: RoomDef[];
 }
 
@@ -127,6 +131,8 @@ export interface LevelRecord {
   assisted?: boolean;
   /** Fewest deaths in an unassisted clear. */
   fewestDeaths?: number;
+  /** Cleared without dying and without assist (the crown). */
+  deathless?: boolean;
 }
 
 /** Optional assist mode: slower game, unlimited dashes, no hazard deaths. */

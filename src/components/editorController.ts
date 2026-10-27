@@ -167,6 +167,20 @@ export class EditorController {
     return nearestRoom(this.level, tx, ty);
   }
 
+  /** Par time from the Save dialog's text field (seconds; empty / invalid clears it). */
+  setPar(text: string) {
+    const sec = Number(text.replace(',', '.'));
+    if (text.trim() && Number.isFinite(sec) && sec > 0) this.level.par = Math.round(sec * 10) / 10;
+    else delete this.level.par;
+    this.emit(true);
+  }
+
+  setTheme(id: string) {
+    if (id) this.level.theme = id;
+    else delete this.level.theme;
+    this.emit(true);
+  }
+
   setChapter(chapter: string) {
     if (chapter) this.level.chapter = chapter;
     else delete this.level.chapter;

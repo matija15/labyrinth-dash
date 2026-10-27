@@ -7,7 +7,7 @@ import { Game } from '../engine/game';
 import { TouchController } from '../engine/input';
 import { GameLoop } from '../engine/loop';
 import {
-  PLAYER_SKINS, selectedLook, selectSkin, THEMES, unlockSkin, unlockStatus, type Look, type SkinKind,
+  CHAPTER_THEME, PLAYER_SKINS, selectedLook, selectSkin, THEMES, unlockSkin, unlockStatus, type Look, type SkinKind,
 } from '../engine/skins';
 import { artReady, useLookImages } from '../skins/art';
 import { PREVIEW_LEVEL } from '../skins/preview';
@@ -25,6 +25,7 @@ interface Props {
 export function SkinPicker({ save, releaseIds, onSave, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const equipped = selectedLook(save);
+  const themePick = save.skins?.theme ?? CHAPTER_THEME;
   const [preview, setPreview] = useState({ player: equipped.player.id, theme: equipped.theme.id });
   const [busy, setBusy] = useState(false);
   const player = PLAYER_SKINS.find((s) => s.id === preview.player) ?? equipped.player;
@@ -53,9 +54,23 @@ export function SkinPicker({ save, releaseIds, onSave, onBack }: Props) {
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.row}>
+        {kind === 'theme' && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Theme Chapter themes"
+            onPress={() => pick('theme', CHAPTER_THEME)}
+            style={({ pressed }) => [styles.card, themePick === CHAPTER_THEME && styles.equipped, pressed && { opacity: 0.7 }]}
+          >
+            <View style={[styles.swatch, { backgroundColor: '#5f7d3a' }]} />
+            <Text style={styles.name}>Chapter themes</Text>
+            <Text style={[styles.status, { color: COLORS.orb }]}>
+              {themePick === CHAPTER_THEME ? 'EQUIPPED' : 'Each chapter its own look'}
+            </Text>
+          </Pressable>
+        )}
         {(kind === 'player' ? PLAYER_SKINS : THEMES).map((s) => {
           const st = unlockStatus(kind, s.id, save, releaseIds);
-          const on = equipped[kind].id === s.id;
+          const on = kind === 'theme' ? themePick === s.id : equipped[kind].id === s.id;
           const viewing = preview[kind] === s.id;
           const swatch = 'color' in s ? s.color : s.solidEdge;
           return (

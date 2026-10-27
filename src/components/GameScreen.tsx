@@ -69,7 +69,7 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
   }, [level.id, playtest]);
   const game = useMemo(() => new Game(level, { autoRun, allowNoGoal: playtest, assist }), [level, autoRun, playtest, assist]);
   const recorderRef = useRef(new GhostRecorder());
-  const { player: playerSkin, theme } = selectedLook(save);
+  const { player: playerSkin, theme } = selectedLook(save, level);
   const look = useMemo(() => ({ player: playerSkin, theme }), [playerSkin, theme]);
   const art = useLookImages(look);
   const ready = artReady(look, art);
@@ -214,6 +214,14 @@ export function GameScreen({ level, save, hasNext, onSave, onExit, onNext, playt
           <Text style={styles.sub}>
             {playtest ? 'Playtest' : result.newBest ? 'NEW BEST!' : `Best ${formatTime(result.best)}`} · {result.deaths} deaths
           </Text>
+          {(level.par !== undefined || (result.deaths === 0 && !game.assist)) && (
+            <Text style={[styles.sub, { color: COLORS.key }]}>
+              {[
+                level.par !== undefined && `PAR ${formatTime(level.par * 1000)}${result.ms <= level.par * 1000 ? ' · BEATEN' : ''}`,
+                result.deaths === 0 && !game.assist && 'DEATHLESS CROWN',
+              ].filter(Boolean).join(' · ')}
+            </Text>
+          )}
           {hasNext && <Button label="Next level" onPress={onNext} primary />}
           <Button label="Retry" onPress={restart} primary={!hasNext} />
           <Button label={playtest ? 'Back to editor' : 'Level select'} onPress={onExit} />

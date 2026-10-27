@@ -117,7 +117,7 @@ function makePaints({ theme: T, player: PL }: Look) {
 
 const UI = { text: '#e8ecff', dim: '#7c86b0' };
 /** Colours of the newer mechanics (shared by every theme, like hazards they stay readable everywhere). */
-export const MECH = { crystal: '#ff7ae0', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff' };
+export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff' };
 
 const getPaints = (look: Look) => {
   const key = `${look.theme.id}/${look.player.id}`;
@@ -391,11 +391,15 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     }
   });
 
-  // Crystals
+  // Lanterns (two dashes): a hanging lantern with a flickering flame
   world.crystals.forEach((o, i) => {
-    const r = game.crystalCooldown[i] > 0 ? 2.6 : 3.4 + Math.sin(t * 6 + i) * 0.3;
+    const lit = game.crystalCooldown[i] <= 0;
+    const r = lit ? 2.6 + Math.sin(t * 9 + i * 1.7) * 0.25 : 2.2;
     const d = Skia.PathBuilder.Make();
-    d.moveTo(o.x, o.y - r * 1.3); d.lineTo(o.x + r, o.y); d.lineTo(o.x, o.y + r * 1.3); d.lineTo(o.x - r, o.y); d.close();
+    d.moveTo(o.x - 1.2, o.y - r * 1.5); d.lineTo(o.x + 1.2, o.y - r * 1.5);
+    d.lineTo(o.x + r, o.y - r * 0.6); d.lineTo(o.x + r, o.y + r * 0.8); d.lineTo(o.x + r * 0.5, o.y + r * 1.3);
+    d.lineTo(o.x - r * 0.5, o.y + r * 1.3); d.lineTo(o.x - r, o.y + r * 0.8); d.lineTo(o.x - r, o.y - r * 0.6); d.close();
+    d.moveTo(o.x, o.y - r * 1.5); d.lineTo(o.x, o.y - r * 2.1);
     const path = d.detach();
     if (game.crystalCooldown[i] > 0) return c.drawPath(path, P.crystalSpent);
     c.drawPath(path, P.crystalGlow);
@@ -561,7 +565,7 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   if (game.assist) {
     const a = game.assist;
     const parts = [a.speed < 1 && `${Math.round(a.speed * 100)}%`, a.infiniteDash && '∞ DASH', a.invincible && 'INVINCIBLE'].filter(Boolean);
-    text(c, `ASSIST ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
+    text(c, `WAYFINDER ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
   }
   if (game.heldKeys > 0) {
     P.key.setColor(Skia.Color(f.look.theme.key));
