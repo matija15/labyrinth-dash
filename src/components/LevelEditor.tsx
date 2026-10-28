@@ -7,9 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { TILE, VIEW_TILES_H } from '../engine/constants';
 import {
-  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, roomIssues, roomOnly, startingFrom,
+  blankLevel, cloneLevel, editorIssues, levelToCode, levelToJson, parseLevelCode, roomIssues, roomOnly, startingAt, startingFrom,
   TOOL_SHORTCUTS, toolForKey, type EditorTool,
 } from '../engine/editor';
+import { checkLevel, type LevelIssue } from '../engine/check';
 import { deletePackLevel, fetchPack, reorderPack, savePackLevel } from '../engine/levelServer';
 import { loadEditorDraft, loadStamps, writeEditorDraft, writeStamps, type Stamp } from '../engine/storage';
 import { DEV_LEVELS, RELEASE_LEVELS } from '../levels';
@@ -23,9 +24,9 @@ interface Props {
   active: boolean;
   onPlaytest: (level: LevelDef) => void;
   onExit: () => void;
-  /** Where playtests died (world px), drawn as red ✕ marks. */
-  deathMarks?: [number, number][];
-  onClearDeathMarks?: () => void;
+  /** Where playtests died (world px) per level id, drawn as red ✕ marks or a heatmap. */
+  deathMarks?: Record<string, [number, number][]>;
+  onClearDeathMarks?: (levelId: string) => void;
 }
 
 /** Theme choices for a level ('' = default). */
@@ -47,6 +48,7 @@ const TOOLS: { tool: EditorTool; label: string; color: string }[] = [
   { tool: 'E', label: 'Echo Door', color: MECH.echo },
   { tool: 'F', label: 'Gravity Gate', color: MECH.grav },
   { tool: 'R', label: 'Reverse Gate', color: MECH.rev },
+  { tool: '@', label: 'Page', color: '#f2e2b8' },
   { tool: '-', label: 'One-Way', color: COLORS.solidEdge },
   { tool: 'platform', label: 'Platform', color: '#8fa6ff' },
   { tool: '[', label: 'Switch A', color: MECH.switchA },
@@ -78,6 +80,7 @@ const HINTS: Partial<Record<EditorTool, string>> = {
   n: 'Down-draft pushes the player down · press I again to turn it',
   S: 'Every room needs a spawn (checkpoint) · playtest starts at the first room’s',
   G: 'One exit flag per level',
+  '@': 'Storybook page · hide it off the main route · it counts once the player leaves its room alive and clears the level',
   erase: 'Drag to erase tiles and saws',
   'room+': 'Tap empty space to add a walled 32×16 room',
   'room-': 'Tap a room to delete it',
@@ -87,7 +90,7 @@ const HINTS: Partial<Record<EditorTool, string>> = {
 };
 
 /** Tools that Fill can paint across a selection. */
-const FILL_TOOLS = new Set<EditorTool>(['#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', '-', '[', ']', '*', ')', '(', 'u', 'n', 'erase']);
+const FILL_TOOLS = new Set<EditorTool>(['@', '#', '^', 'O', 'K', 'D', 'S', 'G', '=', 'J', '-', '[', ']', '*', ')', '(', 'u', 'n', 'erase']);
 /** Pressing the wind hotkey again turns the wind: → ↑ ← ↓. */
 const WIND_TOOLS: EditorTool[] = [')', 'u', '(', 'n'];
 
@@ -97,7 +100,7 @@ const ZOOM_MIN = 0.33;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 1.25;
 const PALETTE_W = 126;
-export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDeathMarks }: Props) {
+export function LevelEditor({ active, onPlaytest, onExit, deathMarks: allDeathMarks, onClearDeathMarks }: Props) {
   const insets = useSafeAreaInsets();
   const font = useFont(require('../../assets/fonts/SpaceMono-Bold.ttf'), 11);
   const ctl = useMemo(() => new EditorController(), []);
@@ -108,7 +111,9 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
   const [zoom, setZoom] = useState(1);
   const [grid, setGrid] = useState(true);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const [modal, setModal] = useState<'export' | 'levels' | 'save' | 'stamps' | null>(null);
+  const [modal, setModal] = useState<'export' | 'levels' | 'save' | 'stamps' | 'check' | null>(null);
+  const [heat, setHeat] = useState(false);
+  const hover = useRef<{ x: number; y: number } | null>(null);
   const [stamps, setStamps] = useState<Stamp[]>([]);
   useEffect(() => {
     loadStamps().then(setStamps);
@@ -168,6 +173,12 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     ctl.focus(focusLeft, 44);
   }, [ctl, draftLoaded, focusLeft, scale, size.height, size.width, tool]);
 
+  const deathMarks = allDeathMarks?.[snap.level.id];
+  const checks = useMemo(() => {
+    void snap.version;
+    return checkLevel(snap.level);
+  }, [snap.level, snap.version]);
+
   const content = useMemo(() => {
     void snap.version;
     return buildEditorPicture(snap.level);
@@ -178,9 +189,9 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     return renderEditorFrame({
       level: snap.level, content, width: size.width, height: size.height, scale,
       camX: snap.camX, camY: snap.camY, grid, font, cursor: snap.cursor, sawDrag: snap.sawDrag,
-      platformDrag: snap.platformDrag, deathMarks, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
+      platformDrag: snap.platformDrag, deathMarks, heat, selection: tool === 'select' ? snap.selection : null, pastePreview: snap.pastePreview,
     });
-  }, [content, size, scale, grid, font, snap, tool, deathMarks]);
+  }, [content, size, scale, grid, font, snap, tool, deathMarks, heat]);
 
   const gesture = useMemo(() => createEditorGesture(ctl), [ctl]);
 
@@ -220,6 +231,25 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     onPlaytest(practice);
   };
 
+  /** Playtest from a tile: the player starts (and respawns) there. */
+  const playtestAt = (tx: number, ty: number) => {
+    const level = startingAt(snap.level, tx, ty);
+    if (!level) return ctl.setMessage('Pick an empty tile inside a room to start from');
+    const issues = editorIssues(level);
+    if (issues.length) return ctl.setMessage(`Can’t playtest: ${issues[0]}`);
+    ctl.setMessage(null);
+    onPlaytest(level);
+  };
+  const pickStart = () => {
+    ctl.pickTile((tx, ty) => playtestAt(tx, ty));
+    ctl.setMessage('Tap the tile to start the playtest from (Shift+T on web starts at the mouse)');
+  };
+  const jumpTo = (issue: LevelIssue) => {
+    setModal(null);
+    if (issue.at) ctl.centerOn(issue.at[0], issue.at[1], focusLeft);
+    ctl.setMessage(issue.message);
+  };
+
   // Web: tool hotkeys, T room playtest, arrow keys scroll, Ctrl+Z undo, wheel zooms at the cursor.
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
@@ -247,6 +277,11 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
       ctl.selectionOp('clear');
     } else if (e.key === 'Escape') {
       ctl.selectionOp('deselect');
+    } else if (k === 't' && e.shiftKey) {
+      if (hover.current) {
+        const [tx, ty] = ctl.tileAtScreen(hover.current.x, hover.current.y);
+        playtestAt(tx, ty);
+      }
     } else if (k === 't') {
       playtestRoom();
     } else if (k === '+' || k === '=') {
@@ -276,6 +311,12 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     if (!active || Platform.OS !== 'web' || typeof window === 'undefined') return;
     let drag: { id: number; x: number; y: number } | null = null;
     const key = (e: KeyboardEvent) => onKey(e);
+    const track = (e: PointerEvent) => {
+      const canvas = (e.target as Element | null)?.closest?.('#editor-canvas');
+      if (!canvas) return void (hover.current = null);
+      const r = canvas.getBoundingClientRect();
+      hover.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
     const wheel = (e: WheelEvent) => onWheel(e);
     // Capture phase + stopPropagation keeps the middle-button drag away from the paint gesture.
     const down = (e: PointerEvent) => {
@@ -305,6 +346,7 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     };
     const opts = { capture: true };
     window.addEventListener('keydown', key);
+    window.addEventListener('pointermove', track);
     window.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('pointerdown', down, opts);
     window.addEventListener('pointermove', move, opts);
@@ -313,6 +355,7 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
     window.addEventListener('auxclick', noDefault, opts);
     return () => {
       window.removeEventListener('keydown', key);
+      window.removeEventListener('pointermove', track);
       window.removeEventListener('wheel', wheel);
       window.removeEventListener('pointerdown', down, opts);
       window.removeEventListener('pointermove', move, opts);
@@ -382,10 +425,21 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
         <BarButton label="+" a11y="Zoom in" onPress={() => zoomTo(zoom * ZOOM_STEP)} disabled={zoom >= ZOOM_MAX - 1e-6} />
         <BarButton label="Levels" onPress={() => setModal('levels')} />
         <BarButton label="Stamps" onPress={() => setModal('stamps')} />
-        {!!deathMarks?.length && <BarButton label={`✕ ${deathMarks.length} deaths`} onPress={() => onClearDeathMarks?.()} />}
+        {!!deathMarks?.length && (
+          <>
+            <BarButton label={heat ? `Heat ✓ ${deathMarks.length}` : `✕ ${deathMarks.length} deaths`} a11y="Toggle death heatmap" onPress={() => setHeat((h) => !h)} />
+            <BarButton label="Clear ✕" a11y="Clear deaths" onPress={() => onClearDeathMarks?.(snap.level.id)} />
+          </>
+        )}
+        <BarButton
+          label={checks.length ? `Check ${checks.length}` : 'Check ✓'}
+          a11y="Check level"
+          onPress={() => setModal('check')}
+        />
         <BarButton label="Save" onPress={() => setModal('save')} />
         <BarButton label="Export" onPress={() => setModal('export')} />
         <BarButton label="▶ Room [T]" a11y="Playtest current room" onPress={playtestRoom} primary />
+        <BarButton label="▶ Tile" a11y="Playtest from tile" onPress={pickStart} primary />
         <BarButton label="▶ Here" onPress={() => playtest(true)} primary />
         <BarButton label="▶ Start" onPress={() => playtest(false)} primary />
         <BarButton label="Exit" onPress={onExit} />
@@ -429,6 +483,7 @@ export function LevelEditor({ active, onPlaytest, onExit, deathMarks, onClearDea
           onClose={() => setModal(null)}
         />
       )}
+      {modal === 'check' && <CheckModal issues={checks} onJump={jumpTo} onClose={() => setModal(null)} />}
       {modal === 'stamps' && (
         <StampsModal
           stamps={stamps}
@@ -500,6 +555,31 @@ function Sheet({ title, children, onClose }: { title: string; children: React.Re
         {children}
       </View>
     </View>
+  );
+}
+
+function CheckModal({ issues, onJump, onClose }: { issues: LevelIssue[]; onJump: (i: LevelIssue) => void; onClose: () => void }) {
+  return (
+    <Sheet title="LEVEL CHECK" onClose={onClose}>
+      {issues.length === 0 && <Text style={styles.small}>No problems found.</Text>}
+      <ScrollView style={{ maxHeight: 320 }}>
+        {issues.map((issue, i) => (
+          <Pressable
+            key={i}
+            accessibilityRole="button"
+            accessibilityLabel={`Issue ${issue.message}`}
+            onPress={() => onJump(issue)}
+            style={({ pressed }) => [styles.row, { paddingVertical: 6 }, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={[styles.small, { color: issue.severity === 'error' ? COLORS.spike : COLORS.key, width: 56 }]}>
+              {issue.severity === 'error' ? 'ERROR' : 'WARN'}
+            </Text>
+            <Text style={[styles.small, { flex: 1, color: COLORS.text }]}>{issue.message}</Text>
+            {issue.at && <Text style={styles.small}>show ›</Text>}
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Sheet>
   );
 }
 

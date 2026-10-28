@@ -89,3 +89,22 @@ export async function loadGhost(levelId: string): Promise<Ghost | null> {
 export function writeGhost(levelId: string, ghost: Ghost) {
   return AsyncStorage.setItem(ghostKey(levelId), JSON.stringify(ghost)).catch(() => undefined);
 }
+
+const DEATHS_KEY = '@labyrinth-dash/deaths/v1';
+
+/** Editor playtest deaths per level id (world px), for the death heatmap. */
+export type DeathMarks = Record<string, [number, number][]>;
+
+export async function loadDeathMarks(): Promise<DeathMarks> {
+  try {
+    const raw = await AsyncStorage.getItem(DEATHS_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeDeathMarks(marks: DeathMarks) {
+  return AsyncStorage.setItem(DEATHS_KEY, JSON.stringify(marks)).catch(() => undefined);
+}

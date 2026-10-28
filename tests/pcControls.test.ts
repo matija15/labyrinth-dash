@@ -113,7 +113,8 @@ test('editor tool hotkeys', () => {
     assert.equal(toolForKey(key.toUpperCase()), tool, key.toUpperCase());
   }
   assert.equal(toolForKey('t'), null, 'T is room playtest');
-  assert.equal(toolForKey('/'), null);
+  assert.equal(toolForKey('/'), '@');
+  assert.equal(toolForKey('`'), null);
   const keys = Object.values(TOOL_SHORTCUTS).flatMap((v) => v!.filter(Boolean));
   assert.equal(new Set(keys).size, keys.length, 'shortcuts are unique');
 });

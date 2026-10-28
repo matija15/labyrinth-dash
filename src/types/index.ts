@@ -10,7 +10,7 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `G` goal         `.` or space: empty
  *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
  *  `%` fake wall (looks solid, is passable)   `P` echo plate   `E` echo door (open while your echo holds a plate)
- *  `F` gravity gate (flips gravity)   `R` reverse gate (reverses your run)
+ *  `F` gravity gate (flips gravity)   `R` reverse gate (reverses your run)   `@` storybook page (collectible)
  *  `*` lantern (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =
@@ -122,7 +122,12 @@ export type GameEvent =
   | { type: 'pad' }
   | { type: 'portal' }
   | { type: 'room' }
-  | { type: 'goal' };
+  | { type: 'goal' }
+  | { type: 'page' }
+  | { type: 'gravity' }
+  | { type: 'reverse' }
+  | { type: 'reveal' }
+  | { type: 'plate' };
 
 export interface LevelRecord {
   bestMs: number | null;
@@ -135,6 +140,8 @@ export interface LevelRecord {
   fewestDeaths?: number;
   /** Cleared without dying and without assist (the crown). */
   deathless?: boolean;
+  /** Storybook pages ever found here (indices in reading order), counted when the level is cleared. */
+  pages?: number[];
 }
 
 /** Optional assist mode: slower game, unlimited dashes, no hazard deaths. */
@@ -157,6 +164,8 @@ export interface SaveData {
   assist?: AssistSettings;
   /** Show the best-run ghost (absent → on). */
   ghost?: boolean;
+  /** Vibration on phones (absent → on). */
+  haptics?: boolean;
   /** Equipped skin ids and ad-unlocked skins (`player:<id>` / `theme:<id>`). */
   skins?: { player?: string; theme?: string; unlocked?: string[] };
 }

@@ -82,6 +82,8 @@ export interface World {
   plates: { tx: number; ty: number; room: number }[];
   rooms: Room[];
   keys: KeyItem[];
+  /** Storybook pages (collectibles), in reading order. */
+  pages: KeyItem[];
   doors: DoorGroup[];
   orbs: Orb[];
   pads: Pad[];
@@ -160,7 +162,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
   const fakeOf = new Int16Array(w * h).fill(-1);
   const world: World = {
     w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf, roomOf, fakeOf, fakes: [], plates: [],
-    rooms: [], keys: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [], crystals: [], switches: [], winds: [],
+    rooms: [], keys: [], pages: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [], crystals: [], switches: [], winds: [],
     goal: null, start: { x: 0, y: 0 },
   };
   const portalFirst = new Map<string, number>();
@@ -194,6 +196,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
           tile = T.Door;
           doorTiles.push(i);
         } else if (ch === 'K') world.keys.push({ x: cx, y: cy, room: index });
+        else if (ch === '@') world.pages.push({ x: cx, y: cy, room: index });
         else if (ch === 'O') world.orbs.push({ x: cx, y: cy });
         else if (ch === '*') world.crystals.push({ x: cx, y: cy });
         else if (TILE_OF[ch] !== undefined) {
