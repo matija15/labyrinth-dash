@@ -9,7 +9,9 @@ export type Rect = { x: number; y: number; w: number; h: number };
  *  `O` dash orb     `J` jump pad     `1`-`9` portal pair  `S` spawn/checkpoint
  *  `G` goal         `.` or space: empty
  *  `-` one-way platform (solid from above)   `[` / `]` switch blocks (swap solid on every dash)
- *  `*` crystal (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
+ *  `%` fake wall (looks solid, is passable)   `P` echo plate   `E` echo door (open while your echo holds a plate)
+ *  `F` gravity gate (flips gravity)   `R` reverse gate (reverses your run)
+ *  `*` lantern (refills two dashes)          `(` `)` `u` `n` wind blowing left / right / up / down
  */
 export type TileChar =
   | '#'
@@ -80,6 +82,10 @@ export interface LevelDef {
   subtitle: string;
   /** Chapter name; consecutive levels with the same name are one chapter in the level select. */
   chapter?: string;
+  /** Par time in seconds, shown on level select; beating it is a bonus goal. */
+  par?: number;
+  /** World theme id used while the player keeps the "Chapter themes" setting. */
+  theme?: string;
   rooms: RoomDef[];
 }
 
@@ -127,6 +133,8 @@ export interface LevelRecord {
   assisted?: boolean;
   /** Fewest deaths in an unassisted clear. */
   fewestDeaths?: number;
+  /** Cleared without dying and without assist (the crown). */
+  deathless?: boolean;
 }
 
 /** Optional assist mode: slower game, unlimited dashes, no hazard deaths. */

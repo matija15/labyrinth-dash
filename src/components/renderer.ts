@@ -101,6 +101,13 @@ function makePaints({ theme: T, player: PL }: Look) {
     })(),
     artGhost: paint('#ffffff'),
     ghost: paint(COLORS.player),
+    echo: paint(MECH.echo, { alpha: 0.55 }),
+    grav: paint(MECH.grav, { alpha: 0.22 }),
+    gravLine: paint(MECH.grav, { stroke: 0.7, alpha: 0.8 }),
+    rev: paint(MECH.rev, { alpha: 0.22 }),
+    revLine: paint(MECH.rev, { stroke: 0.7, alpha: 0.8 }),
+    echoGlow: paint(MECH.echo, { blur: 3, alpha: 0.6 }),
+    echoLine: paint(MECH.echo, { stroke: 0.6, alpha: 0.6 }),
     particle: paint('#ffffff'),
     light: paint('#ffffff', { blend: BlendMode.Plus }),
     flash: paint('#ffffff'),
@@ -117,7 +124,7 @@ function makePaints({ theme: T, player: PL }: Look) {
 
 const UI = { text: '#e8ecff', dim: '#7c86b0' };
 /** Colours of the newer mechanics (shared by every theme, like hazards they stay readable everywhere). */
-export const MECH = { crystal: '#ff7ae0', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff' };
+export const MECH = { crystal: '#ffb86b', switchA: '#ff4dd2', switchB: '#4d9dff', wind: '#cfe8ff', echo: '#b18cff', grav: '#38bdf8', rev: '#a3e635' };
 
 const getPaints = (look: Look) => {
   const key = `${look.theme.id}/${look.player.id}`;
@@ -136,6 +143,8 @@ function drawArt(c: SkCanvas, img: SkImage, x: number, y: number, w: number, h: 
 }
 
 const solidish = (t: T) => t === T.Solid || t === T.Void;
+/** Fake walls count as wall for edge drawing so they blend into the real walls around them. */
+const walled = (t: T) => solidish(t) || t === T.FakeWall;
 
 /** Static geometry (walls, spikes) is recorded once per level into a reusable picture. */
 export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}): SkPicture {
@@ -161,10 +170,10 @@ export function buildStaticPicture(game: Game, look: Look, art: ArtImages = {}):
       const y = ty * TILE;
       if (solidish(t)) {
         // Only draw tiles adjacent to open space (deep void stays background)
-        const exposedU = !solidish(at(tx, ty - 1));
-        const exposedD = !solidish(at(tx, ty + 1));
-        const exposedL = !solidish(at(tx - 1, ty));
-        const exposedR = !solidish(at(tx + 1, ty));
+        const exposedU = !walled(at(tx, ty - 1));
+        const exposedD = !walled(at(tx, ty + 1));
+        const exposedL = !walled(at(tx - 1, ty));
+        const exposedR = !walled(at(tx + 1, ty));
         let near = exposedU || exposedD || exposedL || exposedR;
         if (!near)
           for (let dy = -2; dy <= 2 && !near; dy++)
@@ -376,6 +385,55 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     } else c.drawRect(Skia.XYWHRect(x + 0.8, y + 0.8, TILE - 1.6, TILE - 1.6), b ? P.switchBOff : P.switchAOff);
   }
 
+  // Echo plates (lit while held open) and echo doors (violet bars, outline when open)
+  for (const pl of world.plates) {
+    const lit = game.echoOpen[pl.room] > 0;
+    const r = Skia.XYWHRect(pl.tx * TILE + 1, pl.ty * TILE + TILE - (lit ? 1.5 : 2.5), TILE - 2, lit ? 1.5 : 2.5);
+    if (lit) c.drawRect(r, P.echoGlow);
+    c.drawRect(r, P.echo);
+  }
+  for (let i = 0; i < world.grid.length; i++) {
+    const t = world.grid[i];
+    if (t !== T.EchoDoor && t !== T.GravGate && t !== T.RevGate) continue;
+    const x = (i % world.w) * TILE;
+    const y = Math.floor(i / world.w) * TILE;
+    if (t !== T.EchoDoor) {
+      // Gates: a tinted band with chevrons (up/down for gravity, left/right for reverse) drifting over time
+      const grav = t === T.GravGate;
+      c.drawRect(Skia.XYWHRect(x + 1, y, TILE - 2, TILE), grav ? P.grav : P.rev);
+      const s = ((game.worldTime * 6) % 4) - 2;
+      const line = grav ? P.gravLine : P.revLine;
+      if (grav) {
+        c.drawLine(x + 2, y + 4 + s, x + 4, y + 2 + s, line); c.drawLine(x + 4, y + 2 + s, x + 6, y + 4 + s, line);
+      } else {
+        c.drawLine(x + 2 + s, y + 4, x + 4 + s, y + 2, line); c.drawLine(x + 2 + s, y + 4, x + 4 + s, y + 6, line);
+        c.drawLine(x + 6 - s, y + 4, x + 4 - s, y + 2, line); c.drawLine(x + 6 - s, y + 4, x + 4 - s, y + 6, line);
+      }
+      continue;
+    }
+    if (game.echoOpen[world.roomOf[i]] > 0) c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.echoLine);
+    else {
+      c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.echo);
+      c.drawLine(x + 2.5, y, x + 2.5, y + TILE, P.echoLine);
+      c.drawLine(x + 5.5, y, x + 5.5, y + TILE, P.echoLine);
+    }
+  }
+  const echo = game.echoPos();
+  if (echo) {
+    c.drawRect(Skia.XYWHRect(echo.x - 0.5, echo.y - 0.5, PLAYER_W + 1, PLAYER_H + 1), P.echoGlow);
+    c.drawRect(Skia.XYWHRect(echo.x, echo.y, PLAYER_W, PLAYER_H), P.echo);
+  }
+
+  // Fake walls look like wall until found, then leave a faint outline
+  world.fakes.forEach((tiles, g) => {
+    for (const i of tiles) {
+      const x = (i % world.w) * TILE;
+      const y = Math.floor(i / world.w) * TILE;
+      if (game.fakeRevealed[g]) c.drawRect(Skia.XYWHRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1), P.edge);
+      else c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.solid);
+    }
+  });
+
   // Wind streaks drift along the wind
   world.winds.forEach((w, i) => {
     const s = ((t * 24 + i * 3.7) % TILE + TILE) % TILE;
@@ -391,11 +449,15 @@ function drawWorld(c: SkCanvas, f: FrameContext, P: Paints) {
     }
   });
 
-  // Crystals
+  // Lanterns (two dashes): a hanging lantern with a flickering flame
   world.crystals.forEach((o, i) => {
-    const r = game.crystalCooldown[i] > 0 ? 2.6 : 3.4 + Math.sin(t * 6 + i) * 0.3;
+    const lit = game.crystalCooldown[i] <= 0;
+    const r = lit ? 2.6 + Math.sin(t * 9 + i * 1.7) * 0.25 : 2.2;
     const d = Skia.PathBuilder.Make();
-    d.moveTo(o.x, o.y - r * 1.3); d.lineTo(o.x + r, o.y); d.lineTo(o.x, o.y + r * 1.3); d.lineTo(o.x - r, o.y); d.close();
+    d.moveTo(o.x - 1.2, o.y - r * 1.5); d.lineTo(o.x + 1.2, o.y - r * 1.5);
+    d.lineTo(o.x + r, o.y - r * 0.6); d.lineTo(o.x + r, o.y + r * 0.8); d.lineTo(o.x + r * 0.5, o.y + r * 1.3);
+    d.lineTo(o.x - r * 0.5, o.y + r * 1.3); d.lineTo(o.x - r, o.y + r * 0.8); d.lineTo(o.x - r, o.y - r * 0.6); d.close();
+    d.moveTo(o.x, o.y - r * 1.5); d.lineTo(o.x, o.y - r * 2.1);
     const path = d.detach();
     if (game.crystalCooldown[i] > 0) return c.drawPath(path, P.crystalSpent);
     c.drawPath(path, P.crystalGlow);
@@ -561,7 +623,7 @@ function drawHud(c: SkCanvas, f: FrameContext, P: Paints) {
   if (game.assist) {
     const a = game.assist;
     const parts = [a.speed < 1 && `${Math.round(a.speed * 100)}%`, a.infiniteDash && '∞ DASH', a.invincible && 'INVINCIBLE'].filter(Boolean);
-    text(c, `ASSIST ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
+    text(c, `WAYFINDER ${parts.join(' · ')}`, x0, y0 + 36, smallFont, P.crystal, P.hudShadow);
   }
   if (game.heldKeys > 0) {
     P.key.setColor(Skia.Color(f.look.theme.key));
@@ -609,7 +671,14 @@ export function renderFrame(f: FrameContext): SkPicture {
     P.ghost.setColor(hexWithAlpha(f.look.player.color, 0.3));
     c.drawRect(Skia.XYWHRect(f.ghost.x, f.ghost.y, PLAYER_W, PLAYER_H), P.ghost);
   }
+  const upsideDown = game.gravity < 0;
+  if (upsideDown) {
+    c.save();
+    c.translate(0, (game.player.y + PLAYER_H / 2) * 2);
+    c.scale(1, -1);
+  }
   drawPlayer(c, game, P, f.look, f.art);
+  if (upsideDown) c.restore();
   drawParticles(c, game, P);
   c.restore();
 

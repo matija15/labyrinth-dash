@@ -94,6 +94,21 @@ export const THEMES: WorldTheme[] = [
     spike: '#ff466e', crumble: '#a07a45', door: '#ffd23f', key: '#ffd23f', orb: '#3dff9a', pad: '#ff9f1c',
     saw: '#ff8c28', goal: '#b388ff', blocks: 'flat', spikes: 'chunky', art: 'pixel', unlock: { type: 'ad' },
   },
+  {
+    id: 'thornwood', name: 'Thornwood', bg: '#070b06', grid: '#16221a', solid: '#1f2a17', solidEdge: '#5f7d3a',
+    spike: '#ff4d6d', crumble: '#8a6a3a', door: '#ffcf5a', key: '#ffcf5a', orb: '#7dffb0', pad: '#ff9f1c',
+    saw: '#ff8a3d', goal: '#ffb3e6', blocks: 'brick', spikes: 'needle', unlock: { type: 'free' },
+  },
+  {
+    id: 'clockwork', name: 'Clockwork Mill', bg: '#0b0806', grid: '#2a1f14', solid: '#3a2a18', solidEdge: '#c08a3e',
+    spike: '#ff4d4d', crumble: '#9a7a4a', door: '#ffd23f', key: '#ffd23f', orb: '#4de8ff', pad: '#ff9f1c',
+    saw: '#ffb347', goal: '#c9a2ff', blocks: 'flat', spikes: 'chunky', unlock: { type: 'free' },
+  },
+  {
+    id: 'wolfden', name: "Wolf's Den", bg: '#07060d', grid: '#1c1830', solid: '#1e1a33', solidEdge: '#8a7ad6',
+    spike: '#ff3b6b', crumble: '#7a6a8a', door: '#ffd23f', key: '#ffd23f', orb: '#3dff9a', pad: '#ff9f1c',
+    saw: '#ff6b35', goal: '#e0e6ff', blocks: 'neon', spikes: 'sharp', unlock: { type: 'free' },
+  },
 ];
 
 export const DEFAULT_PLAYER = PLAYER_SKINS[0];
@@ -107,11 +122,19 @@ export interface Look {
 const list = (kind: SkinKind): (PlayerSkin | WorldTheme)[] => (kind === 'player' ? PLAYER_SKINS : THEMES);
 export const skinKey = (kind: SkinKind, id: string) => `${kind}:${id}`;
 
-/** The equipped look. Selection only ever stores unlocked skins, so no unlock check is needed here. */
-export function selectedLook(save: SaveData): Look {
+/** Theme selection that follows each level's own `theme` (the default). */
+export const CHAPTER_THEME = 'auto';
+
+/**
+ * The equipped look. Selection only ever stores unlocked skins, so no unlock check is needed here.
+ * With "Chapter themes" (no theme picked, or `auto`) the level's own theme is used.
+ */
+export function selectedLook(save: SaveData, level?: { theme?: string }): Look {
+  const picked = save.skins?.theme ?? CHAPTER_THEME;
+  const id = picked === CHAPTER_THEME ? level?.theme : picked;
   return {
     player: PLAYER_SKINS.find((s) => s.id === save.skins?.player) ?? DEFAULT_PLAYER,
-    theme: THEMES.find((s) => s.id === save.skins?.theme) ?? DEFAULT_THEME,
+    theme: THEMES.find((s) => s.id === id) ?? DEFAULT_THEME,
   };
 }
 
@@ -123,6 +146,7 @@ export interface UnlockStatus {
 
 /** `releaseIds`: the levels that count towards "clears" (players only ever have the release pack). */
 export function unlockStatus(kind: SkinKind, id: string, save: SaveData, releaseIds: string[]): UnlockStatus {
+  if (kind === 'theme' && id === CHAPTER_THEME) return { unlocked: true, label: 'Free' };
   const skin = list(kind).find((s) => s.id === id);
   if (!skin) return { unlocked: false, label: 'Unknown' };
   const u = skin.unlock;

@@ -23,13 +23,22 @@ export enum T {
   WindR = 14,
   WindU = 15,
   WindD = 16,
+  /** Looks like a wall but is passable; found walls stay revealed. */
+  FakeWall = 17,
+  /** Pressed by your echo (never by you); opens the room's echo doors. */
+  EchoPlate = 18,
+  EchoDoor = 19,
+  /** Flip World: crossing flips gravity. */
+  GravGate = 20,
+  /** Flip World: crossing reverses your run. */
+  RevGate = 21,
 }
 
 export const WIND_DIR: Partial<Record<T, Vec2>> = {
   [T.WindL]: { x: -1, y: 0 }, [T.WindR]: { x: 1, y: 0 }, [T.WindU]: { x: 0, y: -1 }, [T.WindD]: { x: 0, y: 1 },
 };
 const TILE_OF: Record<string, T> = {
-  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD,
+  '-': T.OneWay, '[': T.SwitchA, ']': T.SwitchB, '(': T.WindL, ')': T.WindR, u: T.WindU, n: T.WindD, '%': T.FakeWall, P: T.EchoPlate, E: T.EchoDoor, F: T.GravGate, R: T.RevGate,
 };
 
 export interface Room {
@@ -38,6 +47,8 @@ export interface Room {
   /** Bounds in world px. */
   rect: Rect;
   spawns: Vec2[];
+  /** Has echo plates: attempts here are recorded and replayed as echoes. */
+  echo: boolean;
   saws: SawDef[];
   platforms: PlatformDef[];
   /** Room origin in world tiles (saw coordinates are room-relative). */
@@ -63,6 +74,12 @@ export interface World {
   doorOf: Int16Array;
   /** Crumble index per tile (-1 = none). */
   crumbleOf: Int16Array;
+  /** Room index of every tile (-1 outside rooms). */
+  roomOf: Int16Array;
+  /** Fake-wall group per tile (-1 if none); connected fake walls are found together. */
+  fakeOf: Int16Array;
+  fakes: number[][];
+  plates: { tx: number; ty: number; room: number }[];
   rooms: Room[];
   keys: KeyItem[];
   doors: DoorGroup[];
@@ -139,13 +156,16 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
   const grid = new Uint8Array(w * h).fill(T.Void);
   const doorOf = new Int16Array(w * h).fill(-1);
   const crumbleOf = new Int16Array(w * h).fill(-1);
+  const roomOf = new Int16Array(w * h).fill(-1);
+  const fakeOf = new Int16Array(w * h).fill(-1);
   const world: World = {
-    w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf,
+    w, h, originTx: minX, originTy: minY, grid, doorOf, crumbleOf, roomOf, fakeOf, fakes: [], plates: [],
     rooms: [], keys: [], doors: [], orbs: [], pads: [], portals: [], crumbles: [], crystals: [], switches: [], winds: [],
     goal: null, start: { x: 0, y: 0 },
   };
   const portalFirst = new Map<string, number>();
   const doorTiles: number[] = [];
+  const fakeTiles: number[] = [];
 
   level.rooms.forEach((def, index) => {
     const rx = def.x - minX;
@@ -153,7 +173,7 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
     const room: Room = {
       index, id: def.id,
       rect: { x: rx * TILE, y: ry * TILE, w: def.tiles[0].length * TILE, h: def.tiles.length * TILE },
-      spawns: [], saws: def.saws ?? [], platforms: def.platforms ?? [], tx: rx, ty: ry,
+      spawns: [], echo: false, saws: def.saws ?? [], platforms: def.platforms ?? [], tx: rx, ty: ry,
     };
     def.tiles.forEach((row, y) => {
       for (let x = 0; x < row.length; x++) {
@@ -193,6 +213,12 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
           else world.portals[first].pair = id;
         }
         grid[i] = tile;
+        roomOf[i] = index;
+        if (tile === T.FakeWall) fakeTiles.push(i);
+        if (tile === T.EchoPlate) {
+          world.plates.push({ tx, ty, room: index });
+          room.echo = true;
+        }
       }
     });
     world.rooms.push(room);
@@ -220,6 +246,8 @@ export function buildWorld(level: LevelDef, opts: ValidateOptions = {}): World {
     world.doors.push({ tiles });
   }
 
+  world.fakes = groupTiles(fakeTiles, w, fakeOf);
+
   // Void cells under a non-solid room tile become deadly pits (cascade downward).
   for (let y = 1; y < h; y++)
     for (let x = 0; x < w; x++) {
@@ -246,3 +274,27 @@ export const tileAt = (world: World, tx: number, ty: number): T => {
   if (ty >= world.h) return T.Pit;
   return world.grid[ty * world.w + tx] as T;
 };
+
+/** Flood-fills 4-connected tiles into groups, writing each tile's group index into `of`. */
+function groupTiles(tiles: number[], w: number, of: Int16Array): number[][] {
+  const set = new Set(tiles);
+  const groups: number[][] = [];
+  for (const start of tiles) {
+    if (of[start] !== -1) continue;
+    const group: number[] = [];
+    const stack = [start];
+    of[start] = groups.length;
+    while (stack.length) {
+      const i = stack.pop()!;
+      group.push(i);
+      const x = i % w;
+      for (const n of [i - w, i + w, x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1])
+        if (n >= 0 && set.has(n) && of[n] === -1) {
+          of[n] = groups.length;
+          stack.push(n);
+        }
+    }
+    groups.push(group);
+  }
+  return groups;
+}

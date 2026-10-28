@@ -74,7 +74,7 @@ function key(n: Node) {
   return [
     g.room.index, Math.round(p.x / 4), Math.round(p.y / 4), Math.round(p.vx / 45), Math.round(p.vy / 60), p.dashes,
     g.phase, Math.round((g as unknown as { transition: { t: number } }).transition.t * 40),
-    p.onGround ? 1 : 0, p.wallDir, p.facing, p.running ? 1 : 0, p.wallDrop ? 1 : 0, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState), g.switchFlipped ? 1 : 0, sum(g.crystalCooldown.map((c) => c > 0)),
+    p.onGround ? 1 : 0, p.wallDir, p.facing, p.running ? 1 : 0, p.wallDrop ? 1 : 0, n.held ? 1 : 0, g.heldKeys, sum(g.keysTaken), sum(g.doorsOpen), sum(g.crumbleState), g.switchFlipped ? 1 : 0, g.gravity, sum(g.crystalCooldown.map((c) => c > 0)),
   ].join(',');
 }
 
@@ -157,7 +157,10 @@ function solve(levelId: string, maxNodes = 8_000_000) {
 }
 
 const arg = process.argv.slice(2).find((a) => !a.startsWith('--'));
-const ids = arg ? [arg] : LEVELS.map((l) => l.id);
+/** Echo puzzles need a deliberate death, which this search never plans; tests/echo.test.ts plays them instead. */
+const needsEcho = (l: (typeof LEVELS)[number]) => l.rooms.some((r) => r.tiles.some((row) => row.includes('P')));
+for (const l of arg ? [] : LEVELS.filter(needsEcho)) console.log(`skipping ${l.id}: echo puzzle (scripted in tests/echo.test.ts)`);
+const ids = arg ? [arg] : LEVELS.filter((l) => !needsEcho(l)).map((l) => l.id);
 console.log(`scheme: ${MANUAL ? 'manual run pads' : 'auto-run'}`);
 let failed = false;
 for (const id of ids) {

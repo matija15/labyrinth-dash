@@ -39,6 +39,9 @@ const makePaints = () => ({
   switchA: mk(MECH.switchA),
   switchB: mk(MECH.switchB, { stroke: 0.8 }),
   crystal: mk(MECH.crystal),
+  echo: mk(MECH.echo),
+  grav: mk(MECH.grav, { alpha: 0.6 }),
+  rev: mk(MECH.rev, { alpha: 0.6 }),
   wind: mk(MECH.wind, { stroke: 0.7, alpha: 0.8 }),
   plat: mk('#8fa6ff'),
   death: mk('#ff3b5c', { stroke: 0.9, alpha: 0.85 }),
@@ -159,6 +162,17 @@ export function buildEditorPicture(level: LevelDef): SkPicture {
           const path = d.detach();
           c.drawPath(path, P.goalGlow);
           c.drawPath(path, P.goal);
+        } else if (ch === 'F' || ch === 'R') {
+          c.drawRect(Skia.XYWHRect(x + 1, y, TILE - 2, TILE), ch === 'F' ? P.grav : P.rev);
+        } else if (ch === 'P') {
+          c.drawRect(Skia.XYWHRect(x + 1, y + TILE - 2.5, TILE - 2, 2.5), P.echo);
+        } else if (ch === 'E') {
+          c.drawRect(Skia.XYWHRect(x + 1.5, y, 1.5, TILE), P.echo);
+          c.drawRect(Skia.XYWHRect(x + 5, y, 1.5, TILE), P.echo);
+        } else if (ch === '%') {
+          c.drawRect(Skia.XYWHRect(x, y, TILE, TILE), P.solid);
+          c.drawLine(x + 1, y + 1, x + TILE - 1, y + TILE - 1, P.edge);
+          c.drawLine(x + TILE - 1, y + 1, x + 1, y + TILE - 1, P.edge);
         } else if (ch === '-') {
           c.drawRect(Skia.XYWHRect(x, y, TILE, 2), P.oneWay);
           c.drawLine(x + 2, y + 2, x + 2, y + 4, P.oneWay);

@@ -45,7 +45,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>LABYRINTH DASH</Text>
-          <Text style={styles.tag}>precision platformer · {save.totalDeaths} total deaths</Text>
+          <Text style={styles.tag}>a cursed fairy-tale labyrinth · {save.totalDeaths} total deaths</Text>
         </View>
         <View style={styles.headerRight}>
           <Pressable
@@ -93,15 +93,15 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
           <View style={styles.devRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Assist game speed"
+              accessibilityLabel="Wayfinder game speed"
               onPress={() => onAssist({ ...assist, speed: nextSpeed })}
               style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
             >
-              <Text style={styles.controlsText}>ASSIST SPEED · {Math.round(assist.speed * 100)}%</Text>
+              <Text style={styles.controlsText}>WAYFINDER SPEED · {Math.round(assist.speed * 100)}%</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Assist infinite dash"
+              accessibilityLabel="Wayfinder infinite dash"
               onPress={() => onAssist({ ...assist, infiniteDash: !assist.infiniteDash })}
               style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
             >
@@ -109,7 +109,7 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Assist invincibility"
+              accessibilityLabel="Wayfinder invincibility"
               onPress={() => onAssist({ ...assist, invincible: !assist.invincible })}
               style={({ pressed }) => [styles.controls, pressed && { opacity: 0.7 }]}
             >
@@ -204,8 +204,13 @@ export function LevelSelect({ levels, save, onPlay, onReset, onControls, onAudio
                   <>
                     <Text style={styles.stat}>BEST {rec?.bestMs != null ? formatTime(rec.bestMs) : '--:--.---'}</Text>
                     <Text style={styles.stat}>DEATHS {rec?.deaths ?? 0}</Text>
+                    {level.par !== undefined && (
+                      <Text style={[styles.stat, rec?.bestMs != null && rec.bestMs <= level.par * 1000 && { color: COLORS.key }]}>
+                        PAR {formatTime(level.par * 1000)}
+                      </Text>
+                    )}
                     <Text style={[styles.stat, rec?.completed && { color: COLORS.orb }]}>
-                      {rec?.completed ? `CLEARED x${rec.clears}${rec.assisted ? ' · ASSIST' : ''}${rec.fewestDeaths !== undefined ? ` · BEST ${rec.fewestDeaths}✕` : ''}` : `${level.rooms.length} ROOMS`}
+                      {rec?.completed ? `CLEARED x${rec.clears}${rec.assisted ? ' · WAYFINDER' : ''}${rec.deathless ? ' · CROWN' : ''}${rec.fewestDeaths !== undefined ? ` · BEST ${rec.fewestDeaths}✕` : ''}` : `${level.rooms.length} ROOMS`}
                     </Text>
                   </>
                 ) : problem ? (
